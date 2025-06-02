@@ -48,9 +48,8 @@ function addMultiAreaConditioningCanvas(node, app) {
 				width: `${widgetWidth * t.a}px`,
 				height: `${widgetHeight * t.d}px`,
 				position: "absolute",
-				zIndex: 1,
+				zIndex: 1000,
 				fontSize: `${t.d * 10.0}px`,
-				pointerEvents: "none",
 			});
 			console.log("[MultiAreaConditioning DEBUG] Canvas style applied. transform_e:", t.e, "transform_f:", t.f, "transform_d:", t.d, "widgetWidth_transform_a:", widgetWidth * t.a);
 
