@@ -247,6 +247,12 @@ app.registerExtension({
 
 				this.updateIndexWidgetMax();
 
+				// Trigger a resize of the node itself to accommodate all widgets
+				// This ensures that LiteGraph's layout engine is aware of the space requested by computeSize
+				const new_node_size = this.computeSize(); // LGraphNode.prototype.computeSize()
+				this.setSize(new_node_size);
+				console.log(`[MAC DEBUG onNodeCreated] Node ${this.id} re-computed size to: ${new_node_size[0]}x${new_node_size[1]} after adding all widgets.`);
+
 				this.getExtraMenuOptions = function(_, options) {
 					const areaIndexValue = this.widgets[this.comfyWidgetIndexForAreaSelector] ? this.widgets[this.comfyWidgetIndexForAreaSelector].value : "N/A";
 					options.unshift(
