@@ -1,3 +1,5 @@
+console.log("[MultiAreaConditioning DEBUG] utils.js loaded");
+
 export function CUSTOM_INT(node, inputName, val, func, config = {}) {
 	return {
 		widget: node.addWidget(

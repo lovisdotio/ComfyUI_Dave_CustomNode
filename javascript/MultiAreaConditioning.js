@@ -1,3 +1,4 @@
+console.log("[MultiAreaConditioning DEBUG] MultiAreaConditioning.js loaded");
 import { app } from "/scripts/app.js";
 import {CUSTOM_INT, recursiveLinkUpstream, transformFunc, swapInputs, renameNodeInputs, removeNodeInputs, getDrawColor, computeCanvasSize} from "./utils.js"
 
