@@ -2,6 +2,7 @@ import { app } from "/scripts/app.js";
 import {CUSTOM_INT, recursiveLinkUpstream, transformFunc, swapInputs, renameNodeInputs, removeNodeInputs, getDrawColor, computeCanvasSize} from "./utils.js"
 
 function addMultiAreaConditioningCanvas(node, app) {
+	console.log("[MultiAreaConditioning DEBUG] addMultiAreaConditioningCanvas called for node:", node.id);
 
 	const widget = {
 		type: "customCanvas",
@@ -13,12 +14,15 @@ function addMultiAreaConditioningCanvas(node, app) {
 			this.canvas.value = x;
 		},
 		draw: function (ctx, node, widgetWidth, widgetY) {
+			console.log("[MultiAreaConditioning DEBUG] widget.draw called for node:", node.id, "widgetWidth:", widgetWidth, "widgetY:", widgetY);
 			
 			// If we are initially offscreen when created we wont have received a resize event
 			// Calculate it here instead
 			if (!node.canvasHeight) {
-				computeCanvasSize(node, node.size)
+				console.log("[MultiAreaConditioning DEBUG] node.canvasHeight not set, calling computeCanvasSize.");
+				computeCanvasSize(node, node.size);
 			}
+			console.log("[MultiAreaConditioning DEBUG] node.canvasHeight:", node.canvasHeight, "node.size:", node.size);
 
 			const visible = true //app.canvasblank.ds.scale > 0.5 && this.type === "customCanvas";
 			const t = ctx.getTransform();
@@ -30,7 +34,10 @@ function addMultiAreaConditioningCanvas(node, app) {
 			const width = Math.round(node.properties["width"])
 			const height = Math.round(node.properties["height"])
 
+			console.log("[MultiAreaConditioning DEBUG] Drawing params: width:", width, "height:", height, "widgetHeight (node.canvasHeight):", widgetHeight);
+
 			const scale = Math.min((widgetWidth-margin*2)/width, (widgetHeight-margin*2)/height)
+			console.log("[MultiAreaConditioning DEBUG] Calculated scale:", scale);
 
 			const index = Math.round(node.widgets[node.index].value)
 
@@ -44,8 +51,10 @@ function addMultiAreaConditioningCanvas(node, app) {
 				fontSize: `${t.d * 10.0}px`,
 				pointerEvents: "none",
 			});
+			console.log("[MultiAreaConditioning DEBUG] Canvas style applied. transform_e:", t.e, "transform_f:", t.f, "transform_d:", t.d, "widgetWidth_transform_a:", widgetWidth * t.a);
 
 			this.canvas.hidden = !visible;
+			console.log("[MultiAreaConditioning DEBUG] Canvas hidden:", this.canvas.hidden);
 
             let backgroudWidth = width * scale
             let backgroundHeight = height * scale
@@ -204,6 +213,7 @@ app.registerExtension({
 		if (nodeData.name === "MultiAreaConditioning") {
 			const onNodeCreated = nodeType.prototype.onNodeCreated;
 			nodeType.prototype.onNodeCreated = function () {
+				console.log("[MultiAreaConditioning DEBUG] onNodeCreated called for node:", this.id);
 				const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
 
 				this.setProperty("width", 512)
