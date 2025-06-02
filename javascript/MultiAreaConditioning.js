@@ -15,13 +15,17 @@ function addMultiAreaConditioningCanvas(node, app) {
 			return out;
 		},
 		draw: function (ctx, node, widgetWidth, widgetY, widgetHeight) {
-			if (widgetWidth <=0 || widgetHeight <=0) {
-				console.warn(`[MAC Draw DEBUG] widget.draw: widgetWidth (${widgetWidth}) or widgetHeight (${widgetHeight}) is zero or negative. Skipping draw.`);
+			if (widgetWidth <= 0 || widgetHeight <= 0) {
+				// console.warn(`[MAC Draw DEBUG] widget.draw: widgetWidth (${widgetWidth}) or widgetHeight (${widgetHeight}) is zero or negative. Skipping draw.`);
 				return;
 			}
-			console.log(`[MAC Draw DEBUG] Entry: WW: ${widgetWidth}, WH: ${widgetHeight}, NodeID: ${node.id}`);
+			// console.log(`[MAC Draw DEBUG] Entry: WW: ${widgetWidth}, WH: ${widgetHeight}, NodeID: ${node.id}`);
 
-			const margin = 5;
+			// Make margin adaptive to widgetHeight, ensure it's not too large for small heights
+			let margin = 5;
+			if (widgetHeight < 40) margin = 2; // Smaller margin if space is very tight
+			if (widgetWidth < 40) margin = 2;
+
 			const border = 2;
 
 			const values = node.properties["values"];
@@ -96,7 +100,7 @@ function addMultiAreaConditioningCanvas(node, app) {
 			}
             
 			if (values && values.length > 0) {
-				for (const [k, v] of values.entries()) {
+			for (const [k, v] of values.entries()) {
 					if (k == indexToUse || !v || v.length < 4) continue;
 
 					const [rectX, rectY, rectW, rectH] = getDrawArea(v);
@@ -146,7 +150,7 @@ function addMultiAreaConditioningCanvas(node, app) {
 
 	node.addCustomWidget(widget);
 
-	return { minWidth: 200, minHeight: 350, widget }
+	return { minWidth: 200, minHeight: 400, widget }
 }
 
 app.registerExtension({
@@ -165,7 +169,7 @@ app.registerExtension({
 				this.selected = false;
 				this.comfyWidgetIndexForAreaSelector = 2;
 
-				this.serialize_widgets = true;
+                this.serialize_widgets = true;
 
 				this.updateIndexWidgetMax = function() {
 					const areaSelectorWidget = this.widgets[this.comfyWidgetIndexForAreaSelector];
@@ -245,13 +249,14 @@ app.registerExtension({
 
 				addMultiAreaConditioningCanvas(this, app);
 
-				this.updateIndexWidgetMax();
+				// After all widgets are added, compute the node's ideal size
+				// This will take into account the customCanvas's computeSize() request for 200px height.
+				this.size = this.computeSize(); // Recompute and set node size
+				this.setDirtyCanvas(true, true); // Ensure redraw with new size
 
-				// Trigger a resize of the node itself to accommodate all widgets
-				// This ensures that LiteGraph's layout engine is aware of the space requested by computeSize
-				const new_node_size = this.computeSize(); // LGraphNode.prototype.computeSize()
-				this.setSize(new_node_size);
-				console.log(`[MAC DEBUG onNodeCreated] Node ${this.id} re-computed size to: ${new_node_size[0]}x${new_node_size[1]} after adding all widgets.`);
+				console.log(`[MAC DEBUG] Node ${this.id} onNodeCreated: Size after computeSize: W=${this.size[0]}, H=${this.size[1]}`);
+
+				this.updateIndexWidgetMax();
 
 				this.getExtraMenuOptions = function(_, options) {
 					const areaIndexValue = this.widgets[this.comfyWidgetIndexForAreaSelector] ? this.widgets[this.comfyWidgetIndexForAreaSelector].value : "N/A";
