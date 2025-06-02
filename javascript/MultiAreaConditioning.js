@@ -72,6 +72,8 @@ app.registerExtension({
 				this.selected = false; this.comfyWidgetIndexForAreaSelector = 2; // resX, resY, THEN index
 				this.serialize_widgets = true;
 
+				addMultiAreaConditioningCanvas(this, app); // Custom canvas widget is now the first widget (index 0)
+
 				this.updateIndexWidgetMax = function() { 
 					const areaSelectorWidget = this.widgets[this.comfyWidgetIndexForAreaSelector];
 					if (areaSelectorWidget) {
@@ -149,8 +151,6 @@ app.registerExtension({
 				CUSTOM_INT(this, "height", 0, function (v, widget, node) { transformFunc(widget, v, node, 3); });
 				CUSTOM_INT(this, "strength", 1.0, function (v, widget, node) { transformFunc(widget, v, node, 4); }, { "min": 0.0, "max": 10.0, "step": 0.1, "precision": 2 });
 
-				addMultiAreaConditioningCanvas(this, app); // Custom canvas widget is widget index 8
-				
 				// After ALL widgets are added, tell the node to compute its actual size to fit them.
 				this.size = this.computeSize(); 
 				this.setDirtyCanvas(true, true); 
