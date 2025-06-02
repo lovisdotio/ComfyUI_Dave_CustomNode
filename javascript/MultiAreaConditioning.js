@@ -9,11 +9,13 @@ function addMultiAreaConditioningCanvas(node, app) {
 		type: "customCanvas",
 		name: "MultiAreaConditioning-Canvas",
 		computeSize: function(node_width) { 
-			let width = (node_width || node.size[0] || LiteGraph.NODE_WIDTH) - 8; // Subtract ~4px padding on each side
-			if (width < 10) width = 10; 
-			const height = 300; 
-			this.size = [width, height]; // Crucial: widget must store its own size for LiteGraph to use
-			// console.log(`[MAC DEBUG] customCanvas.computeSize (node_width: ${node_width}) SETTING this.size to: [${this.size[0]}, ${this.size[1]}]`);
+			const minHeight = 100, maxHeight = 500;
+			const minWidth = 100, maxWidth = 600;
+			let previewWidth = Math.round(node.properties["width"] || 512);
+			let previewHeight = Math.round(node.properties["height"] || 512);
+			let width = Math.max(minWidth, Math.min(previewWidth, maxWidth));
+			let height = Math.max(minHeight, Math.min(previewHeight, maxHeight));
+			this.size = [width, height];
 			return this.size; 
 		},
 		draw: function (ctx, node, widgetWidth, widgetY, widgetHeight) { 
@@ -96,8 +98,8 @@ app.registerExtension({
 					} 
 				};
 
-				CUSTOM_INT(this, "resolutionX", 512, function (v, widget, node) { node.properties["width"] = Math.round(Number(v)); node.setDirtyCanvas(true,true); });
-				CUSTOM_INT(this, "resolutionY", 512, function (v, widget, node) { node.properties["height"] = Math.round(Number(v)); node.setDirtyCanvas(true,true); });
+				CUSTOM_INT(this, "resolutionX", 512, function (v, widget, node) { node.properties["width"] = Math.round(Number(v)); node.size = node.widgets[0].computeSize(); node.setDirtyCanvas(true,true); });
+				CUSTOM_INT(this, "resolutionY", 512, function (v, widget, node) { node.properties["height"] = Math.round(Number(v)); node.size = node.widgets[0].computeSize(); node.setDirtyCanvas(true,true); });
 				
 				let initialMaxIndex = this.inputs ? (this.inputs.length > 0 ? this.inputs.length - 1 : 0) : 0;
 				if (initialMaxIndex < 0) initialMaxIndex = 0; 
