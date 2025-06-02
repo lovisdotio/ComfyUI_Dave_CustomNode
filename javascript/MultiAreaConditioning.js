@@ -2,6 +2,67 @@ console.log("[MultiAreaConditioning DEBUG] MultiAreaConditioning.js loaded");
 import { app } from "/scripts/app.js";
 import {CUSTOM_INT, recursiveLinkUpstream, transformFunc, swapInputs, renameNodeInputs, removeNodeInputs, getDrawColor, computeCanvasSize} from "./utils.js"
 
+function createAreaSelectorWidget(node) {
+	return {
+		type: "custom",
+		name: "AreaSelectorCanvas",
+		draw: function(ctx, node, width, y) {
+			// Draw the area selection visualization directly in the node
+			const margin = 10;
+			const border = 2;
+			const widgetHeight = 120; // Fixed height for the canvas area
+			const values = node.properties["values"] || [];
+			const index = node.widgets && node.widgets[node.comfyWidgetIndexForAreaSelector] ? Math.round(node.widgets[node.comfyWidgetIndexForAreaSelector].value) : 0;
+			const widthPx = Math.round(node.properties["width"] || 512);
+			const heightPx = Math.round(node.properties["height"] || 512);
+			const scale = Math.min((width-margin*2)/widthPx, (widgetHeight-margin*2)/heightPx);
+			let backgroudWidth = widthPx * scale;
+			let backgroundHeight = heightPx * scale;
+			let xOffset = margin;
+			if (backgroudWidth < width) xOffset += (width-backgroudWidth)/2 - margin;
+			let yOffset = y + margin;
+			if (backgroundHeight < widgetHeight) yOffset += (widgetHeight-backgroundHeight)/2 - margin;
+			// Draw background
+			ctx.save();
+			ctx.fillStyle = "#000000";
+			ctx.fillRect(xOffset-border, yOffset-border, backgroudWidth+border*2, backgroundHeight+border*2);
+			ctx.fillStyle = globalThis.LiteGraph.NODE_DEFAULT_BGCOLOR;
+			ctx.fillRect(xOffset, yOffset, backgroudWidth, backgroundHeight);
+			// Draw all zones except selected
+			function getDrawArea(v) {
+				let x = v[0]*backgroudWidth/widthPx;
+				let y = v[1]*backgroundHeight/heightPx;
+				let w = v[2]*backgroudWidth/widthPx;
+				let h = v[3]*backgroundHeight/heightPx;
+				if (x > backgroudWidth) x = backgroudWidth;
+				if (y > backgroundHeight) y = backgroundHeight;
+				if (x+w > backgroudWidth) w = Math.max(0, backgroudWidth-x);
+				if (y+h > backgroundHeight) h = Math.max(0, backgroundHeight-y);
+				return [x, y, w, h];
+			}
+			for (const [k, v] of values.entries()) {
+				if (k == index) continue;
+				const [x, y, w, h] = getDrawArea(v);
+				ctx.fillStyle = getDrawColor(k/values.length, "80");
+				ctx.fillRect(xOffset+x, yOffset+y, w, h);
+			}
+			// Draw selected zone
+			let [x, y, w, h] = values[index] ? getDrawArea(values[index]) : [0,0,0,0];
+			w = Math.max(32*scale, w);
+			h = Math.max(32*scale, h);
+			ctx.fillStyle = "#ffffff";
+			ctx.fillRect(xOffset+x, yOffset+y, w, h);
+			const selectedColor = getDrawColor(index/values.length, "FF");
+			ctx.fillStyle = selectedColor;
+			ctx.fillRect(xOffset+x+border, yOffset+y+border, w-border*2, h-border*2);
+			ctx.restore();
+		},
+		computeSize: function(width) {
+			return [width, 120]; // width, height
+		}
+	};
+}
+
 function addMultiAreaConditioningCanvas(node, app) {
 	console.log("[MultiAreaConditioning DEBUG] addMultiAreaConditioningCanvas called for node:", node.id);
 
@@ -276,7 +337,7 @@ app.registerExtension({
 				CUSTOM_INT(this, "resolutionX", 512, function (v, _, node) {const s = this.options.step / 10; this.value = Math.round(v / s) * s; node.properties["width"] = this.value; node.setDirtyCanvas(true,true); });
 				CUSTOM_INT(this, "resolutionY", 512, function (v, _, node) {const s = this.options.step / 10; this.value = Math.round(v / s) * s; node.properties["height"] = this.value; node.setDirtyCanvas(true,true); });
                 
-				addMultiAreaConditioningCanvas(this, app);
+				this.addCustomWidget(createAreaSelectorWidget(this));
 
 				const initialMaxIndex = this.inputs ? (this.inputs.length > 0 ? this.inputs.length - 1 : 0) : 0;
 				CUSTOM_INT(
