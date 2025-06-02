@@ -94,6 +94,8 @@ def is_installed(package, package_overwrite=None):
 # is_installed("onnx")
 # is_installed("onnxruntime", "onnxruntime-gpu")
 
+WEB_DIRECTORY = "javascript" # Tell ComfyUI about the web directory
+
 from .MultiAreaConditioning import MultiAreaConditioning, ConditioningUpscale, ConditioningStretch, ConditioningDebug
 from .MultiLatentComposite import MultiLatentComposite
 #from .ABGRemover import ABGRemover
@@ -106,5 +108,15 @@ NODE_CLASS_MAPPINGS = {
     "ConditioningDebug": ConditioningDebug,
     #"ABGRemover": ABGRemover,
 }
+
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "MultiLatentComposite": "Multi Latent Composite (Davemane42)",
+    "MultiAreaConditioning": "Multi Area Conditioning (Davemane42)",
+    "ConditioningUpscale": "Conditioning Upscale (Davemane42)",
+    "ConditioningStretch": "Conditioning Stretch (Davemane42)",
+    "ConditioningDebug": "Conditioning Debug (Davemane42)",
+}
+
+__all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS', 'WEB_DIRECTORY'] # Add WEB_DIRECTORY to __all__
 
 print('\033[34mDavemane42 Custom Nodes: \033[92mLoaded\033[0m')
