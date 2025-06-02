@@ -11,7 +11,7 @@ function addMultiAreaConditioningCanvas(node, app) {
 		computeSize: function(node_width) { 
 			let width = (node_width || node.size[0] || LiteGraph.NODE_WIDTH) - 8; // Subtract ~4px padding on each side
 			if (width < 10) width = 10; 
-			const height = 200; 
+			const height = 300; 
 			this.size = [width, height]; // Crucial: widget must store its own size for LiteGraph to use
 			// console.log(`[MAC DEBUG] customCanvas.computeSize (node_width: ${node_width}) SETTING this.size to: [${this.size[0]}, ${this.size[1]}]`);
 			return this.size; 
@@ -56,7 +56,7 @@ function addMultiAreaConditioningCanvas(node, app) {
 
 	node.addCustomWidget(widget);
 
-	return { minWidth: 300, minHeight: 450, widget }; // Suggested node min size
+	return { minWidth: 300, minHeight: 550, widget }; // Suggested node min size
 }
 
 app.registerExtension({
