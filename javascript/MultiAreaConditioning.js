@@ -9,9 +9,32 @@ function addMultiAreaConditioningCanvas(node, app) {
 		type: "customCanvas",
 		name: "MultiAreaConditioning-Canvas",
 		computeSize: function(out) {
-			out = out || new Float32Array([0,200]);
-			out[1] = 200;
-			console.log(`[MultiAreaConditioning DEBUG] computeSize for ${this.name}, requesting height: ${out[1]}`);
+			// LiteGraph might pass an array to fill, or nothing.
+			// It might also sometimes pass the node's current width as the first argument to some widget computeSize signatures,
+			// but the typical widget computeSize(out) expects out to be an array [width, height] or undefined.
+			// We primarily want to set the height here and let LiteGraph manage width.
+			
+			var width = LiteGraph.NODE_WIDTH; // Default node width, or use passed node_width if available
+			// Some widget computeSize signatures get (node_width) or (node_width, out_object)
+			// Let's check if 'out' is actually the width first.
+			if (typeof out === 'number') { // If LiteGraph passed node width as the first param
+				width = out;
+				out = arguments[1] || new Float32Array([width, 200]); // Check for a second 'out' param or create new
+			} else { // Standard computeSize(out) signature
+				out = out || new Float32Array([width, 200]);
+			}
+
+			// Ensure out is an array/Float32Array with at least 2 elements
+			if (!out.length || out.length < 2) {
+				out = new Float32Array([width, 200]);
+			}
+			
+			// We don't want to dictate the width from here, let the node itself or LiteGraph do that.
+			// We primarily care about specifying the height.
+			out[0] = 0; // Request 0 width, meaning use node's width or what LiteGraph calculates for it.
+			out[1] = 200; // Request 200px height for this custom canvas widget.
+
+			// console.log(`[MAC DEBUG] computeSize for ${this.name} returning: [${out[0]}, ${out[1]}]`);
 			return out;
 		},
 		draw: function (ctx, node, widgetWidth, widgetY, widgetHeight) {
