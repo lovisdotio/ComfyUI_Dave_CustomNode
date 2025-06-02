@@ -206,21 +206,22 @@ function addMultiAreaConditioningCanvas(node, app) {
 
 	node.addCustomWidget(widget);
 
-	app.canvas.onDrawBackground = function () {
-		// Draw node isnt fired once the node is off the screen
-		// if it goes off screen quickly, the input may not be removed
-		// this shifts it off screen so it can be moved back if the node is visible.
-		for (let n in app.graph._nodes) {
-			n = graph._nodes[n];
-			for (let w in n.widgets) {
-				let wid = n.widgets[w];
-				if (Object.hasOwn(wid, "canvas")) {
-					wid.canvas.style.left = -8000 + "px";
-					wid.canvas.style.position = "absolute";
-				}
-			}
-		}
-	};
+	// app.canvas.onDrawBackground = function () {
+	// 	// Draw node isnt fired once the node is off the screen
+	// 	// if it goes off screen quickly, the input may not be removed
+	// 	// this shifts it off screen so it can be moved back if the node is visible.
+	// 	for (const nodeId in app.graph._nodes) { 
+	// 		const n = app.graph._nodes[nodeId];
+	// 		if (n.widgets) {
+	// 			for (const w of n.widgets) { 
+	// 				if (w && w.canvas instanceof HTMLElement && w.type === "customCanvas") { 
+	// 					// wid.canvas.style.left = -8000 + "px"; // Temporarily disable this
+	// 					// wid.canvas.style.position = "absolute"; // Temporarily disable this
+	// 				}
+	// 			}
+	// 		}
+	// 	}
+	// };
 
 	node.onResize = function (size) {
 		computeCanvasSize(node, size);
