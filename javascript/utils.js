@@ -1,13 +1,29 @@
 console.log("[MultiAreaConditioning DEBUG] utils.js loaded");
 
 export function CUSTOM_INT(node, inputName, val, func, config = {}) {
+	let initialValue = val;
+	// If precision is 0 (integer), ensure the initial value is an integer.
+	if (config.precision === 0 || (typeof config.precision === 'undefined' && !inputName.toLowerCase().includes('strength'))) { // Assume integer if not strength & no precision
+		initialValue = Math.round(Number(val));
+		if (isNaN(initialValue)) initialValue = 0; // Fallback for val if it was NaN
+	}
+	// Ensure default step is 1 and precision is 0 if not otherwise specified for integer-like widgets
+	const defaultConfig = { min: 0, max: 4096, step: 1, precision: 0 };
+	const finalConfig = Object.assign({}, defaultConfig, config);
+
+	// If it is meant to be an integer, override step and precision if not explicitly set by caller for float behavior
+	if (finalConfig.precision === 0 && (config.step === undefined || config.step === 1) && (config.precision === undefined || config.precision === 0) ) {
+		finalConfig.step = 1;
+		finalConfig.precision = 0;
+	}
+
 	return {
 		widget: node.addWidget(
 			"number",
 			inputName,
-			val,
+			initialValue, // Use the potentially rounded initial value
 			func,
-			Object.assign({}, { min: 0, max: 4096, step: 1, precision: 0 }, config)
+			finalConfig
 		),
 	};
 }
