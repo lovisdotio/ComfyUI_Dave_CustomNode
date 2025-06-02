@@ -16,8 +16,10 @@ function addMultiAreaConditioningCanvas(node, app) {
 		},
 		draw: function (ctx, node, widgetWidth, widgetY, widgetHeight) {
 			if (widgetWidth <=0 || widgetHeight <=0) {
+				console.warn(`[MAC Draw DEBUG] widget.draw: widgetWidth (${widgetWidth}) or widgetHeight (${widgetHeight}) is zero or negative. Skipping draw.`);
 				return;
 			}
+			console.log(`[MAC Draw DEBUG] Entry: WW: ${widgetWidth}, WH: ${widgetHeight}, NodeID: ${node.id}`);
 
 			const margin = 5;
 			const border = 2;
@@ -25,6 +27,7 @@ function addMultiAreaConditioningCanvas(node, app) {
 			const values = node.properties["values"];
 			const previewWidth = Math.round(node.properties["width"]);
 			const previewHeight = Math.round(node.properties["height"]);
+			console.log(`[MAC Draw DEBUG] Preview Res: ${previewWidth}x${previewHeight}`);
 
 			let indexToUse = 0;
 			const widgetIdx = node.comfyWidgetIndexForAreaSelector;
@@ -40,11 +43,14 @@ function addMultiAreaConditioningCanvas(node, app) {
 				scale = Math.min((widgetWidth - margin * 2) / previewWidth, (widgetHeight - margin * 2) / previewHeight);
 			}
 			 if (scale <= 0) {
+				console.warn(`[MAC Draw DEBUG] Calculated scale ${scale} is zero or negative. Clamping. Margined W: ${widgetWidth - margin * 2}, Margined H: ${widgetHeight - margin * 2}`);
 				scale = 0.01;
 			}
+			console.log(`[MAC Draw DEBUG] Calculated scale: ${scale}`);
 
 			let backgroundRenderWidth = previewWidth * scale;
 			let backgroundRenderHeight = previewHeight * scale;
+			console.log(`[MAC Draw DEBUG] BackgroundRender WxH: ${backgroundRenderWidth}x${backgroundRenderHeight}`);
 
 			let xOffset = margin;
 			if (backgroundRenderWidth < widgetWidth) {
