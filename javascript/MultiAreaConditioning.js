@@ -40,14 +40,35 @@ function addMultiAreaConditioningCanvas(node, app) {
 			const scale = Math.min((widgetWidth-margin*2)/width, (widgetHeight-margin*2)/height)
 			console.log("[MultiAreaConditioning DEBUG] Calculated scale:", scale);
 
-            // More robust check for the area selector widget and its value
-            const areaSelectorWidget = node.widgets && node.widgets[node.comfyWidgetIndexForAreaSelector];
-            if (!areaSelectorWidget || typeof areaSelectorWidget.value === 'undefined') {
-                console.warn("[MultiAreaConditioning DEBUG] Draw function: Area selector widget (node.widgets[" + node.comfyWidgetIndexForAreaSelector + "]) or its value is not available. Skipping draw. Node ID:", node.id, "Available widgets:", node.widgets);
+            // Verbose check for the area selector widget and its value
+            const widgetIndex = node.comfyWidgetIndexForAreaSelector;
+            console.log(`[MultiAreaConditioning DEBUG] Draw: Accessing widget at index: ${widgetIndex}. Total widgets: ${node.widgets ? node.widgets.length : 'N/A'}`);
+
+            const areaSelectorWidget = node.widgets && node.widgets[widgetIndex];
+
+            if (!areaSelectorWidget) {
+                console.warn(`[MultiAreaConditioning DEBUG] Draw function: Area selector widget at index ${widgetIndex} is NOT FOUND. Node ID:`, node.id, "Available widgets:", JSON.stringify(node.widgets ? node.widgets.map(w => ({name: w.name, type: w.type})) : []));
                 if (this.canvas) this.canvas.hidden = true;
                 return; // Exit draw to prevent error
             }
-            const index = Math.round(areaSelectorWidget.value);
+            
+            console.log(`[MultiAreaConditioning DEBUG] Draw: Found widget: ${areaSelectorWidget.name}, type: ${areaSelectorWidget.type}, value: ${areaSelectorWidget.value}, typeof value: ${typeof areaSelectorWidget.value}`);
+
+            if (typeof areaSelectorWidget.value === 'undefined' || areaSelectorWidget.value === null) { // Check for null explicitly too
+                 console.warn(`[MultiAreaConditioning DEBUG] Draw function: Area selector widget's value is undefined or null. Widget name: ${areaSelectorWidget.name}. Node ID:`, node.id);
+                if (this.canvas) this.canvas.hidden = true;
+                return; 
+            }
+
+            // Attempt to get the value and ensure it's a number before Math.round
+            let numericValue = parseFloat(areaSelectorWidget.value);
+            if (isNaN(numericValue)) {
+                console.error(`[MultiAreaConditioning DEBUG] Draw function: Area selector widget's value is not a number: ${areaSelectorWidget.value}. Widget name: ${areaSelectorWidget.name}. Node ID:`, node.id);
+                if (this.canvas) this.canvas.hidden = true;
+                return;
+            }
+            const index = Math.round(numericValue);
+            console.log(`[MultiAreaConditioning DEBUG] Draw: Successfully got index: ${index}`);
 
 			Object.assign(this.canvas.style, {
 				left: `${t.e}px`,
