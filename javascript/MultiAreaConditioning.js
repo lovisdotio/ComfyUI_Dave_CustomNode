@@ -14,139 +14,130 @@ function addMultiAreaConditioningCanvas(node, app) {
 		set value(x) {
 			this.canvas.value = x;
 		},
-		draw: function (ctx, node, widgetWidth, widgetY) {
-			console.log("[MultiAreaConditioning DEBUG] widget.draw called for node:", node.id, "widgetWidth:", widgetWidth, "widgetY:", widgetY);
+		draw: function (ctx, node, slotWidth, slotY) {
+			console.log("[MultiAreaConditioning DEBUG] widget.draw called for node:", node.id, "slotWidth:", slotWidth, "slotY:", slotY);
 			
-			// If we are initially offscreen when created we wont have received a resize event
-			// Calculate it here instead
 			if (!node.canvasHeight) {
 				console.log("[MultiAreaConditioning DEBUG] node.canvasHeight not set, calling computeCanvasSize.");
 				computeCanvasSize(node, node.size);
 			}
 			console.log("[MultiAreaConditioning DEBUG] node.canvasHeight:", node.canvasHeight, "node.size:", node.size);
 
-			const visible = true //app.canvasblank.ds.scale > 0.5 && this.type === "customCanvas";
+			const visible = true;
 			const t = ctx.getTransform();
-			const margin = 10
-			const border = 2
+			const margin = 10;
+			const border = 2;
 
-			const widgetHeight = node.canvasHeight
-            const values = node.properties["values"]
-			const width = Math.round(node.properties["width"])
-			const height = Math.round(node.properties["height"])
+			const allocatedSlotHeight = node.canvasHeight;
+            const values = node.properties["values"];
+			const contentBaseWidth = Math.round(node.properties["width"]);
+			const contentBaseHeight = Math.round(node.properties["height"]);
 
-			console.log("[MultiAreaConditioning DEBUG] Drawing params: width:", width, "height:", height, "widgetHeight (node.canvasHeight):", widgetHeight);
+			console.log("[MultiAreaConditioning DEBUG] Drawing params: contentBaseWidth:", contentBaseWidth, "contentBaseHeight:", contentBaseHeight, "allocatedSlotHeight:", allocatedSlotHeight);
 
-			const scale = Math.min((widgetWidth-margin*2)/width, (widgetHeight-margin*2)/height)
+			const scale = Math.min((slotWidth - margin*2) / contentBaseWidth, (allocatedSlotHeight - margin*2) / contentBaseHeight);
 			console.log("[MultiAreaConditioning DEBUG] Calculated scale:", scale);
 
-			const index = Math.round(node.widgets[node.index].value)
+			const scaledContentWidth = contentBaseWidth * scale;
+			const scaledContentHeight = contentBaseHeight * scale;
+
+			let centeringOffsetX = margin;
+			if (scaledContentWidth < slotWidth - margin*2) {
+				centeringOffsetX = (slotWidth - scaledContentWidth) / 2;
+			} else {
+			    centeringOffsetX = margin;
+            }
+
+			let centeringOffsetY = margin;
+			if (scaledContentHeight < allocatedSlotHeight - margin*2) {
+				centeringOffsetY = (allocatedSlotHeight - scaledContentHeight) / 2;
+			} else {
+                centeringOffsetY = margin;
+            }
+
+			const index = Math.round(node.widgets[node.index].value);
 
 			Object.assign(this.canvas.style, {
 				left: `${t.e}px`,
-				top: `${t.f + (widgetY*t.d)}px`,
-				width: `${widgetWidth * t.a}px`,
-				height: `${widgetHeight * t.d}px`,
+				top: `${t.f + (slotY * t.d)}px`,
+				width: `${slotWidth * t.a}px`,
+				height: `${allocatedSlotHeight * t.d}px`,
 				position: "absolute",
 				zIndex: 1000,
 				fontSize: `${t.d * 10.0}px`,
 			});
-			console.log("[MultiAreaConditioning DEBUG] Canvas style applied. transform_e:", t.e, "transform_f:", t.f, "transform_d:", t.d, "widgetWidth_transform_a:", widgetWidth * t.a);
+			console.log("[MultiAreaConditioning DEBUG] HTML Overlay Canvas style applied. ScreenTop for widget:", t.f + (slotY * t.d));
 
 			this.canvas.hidden = !visible;
-			console.log("[MultiAreaConditioning DEBUG] Canvas hidden:", this.canvas.hidden);
+			console.log("[MultiAreaConditioning DEBUG] HTML Overlay Canvas hidden:", this.canvas.hidden);
 
-            let backgroudWidth = width * scale
-            let backgroundHeight = height * scale
+            const nodeInternalXPadding = 0;
+            const drawBaseX = nodeInternalXPadding + centeringOffsetX;
+            const drawBaseY = centeringOffsetY;
 
-			let xOffset = margin
-			if (backgroudWidth < widgetWidth) {
-				xOffset += (widgetWidth-backgroudWidth)/2 - margin
-			}
-			let yOffset = margin
-			if (backgroundHeight < widgetHeight) {
-				yOffset += (widgetHeight-backgroundHeight)/2 - margin
-			}
+			ctx.fillStyle = "#000000";
+			ctx.fillRect(slotX + drawBaseX - border, slotY + drawBaseY - border, scaledContentWidth + border*2, scaledContentHeight + border*2);
 
-			let widgetX = xOffset
-			widgetY = widgetY + yOffset
-
-			ctx.fillStyle = "#000000"
-			ctx.fillRect(widgetX-border, widgetY-border, backgroudWidth+border*2, backgroundHeight+border*2)
-
-			ctx.fillStyle = globalThis.LiteGraph.NODE_DEFAULT_BGCOLOR
-			ctx.fillRect(widgetX, widgetY, backgroudWidth, backgroundHeight);
+			ctx.fillStyle = globalThis.LiteGraph.NODE_DEFAULT_BGCOLOR;
+			ctx.fillRect(slotX + drawBaseX, slotY + drawBaseY, scaledContentWidth, scaledContentHeight);
 
 			function getDrawArea(v) {
-				let x = v[0]*backgroudWidth/width
-				let y = v[1]*backgroundHeight/height
-				let w = v[2]*backgroudWidth/width
-				let h = v[3]*backgroundHeight/height
+				let x_rel = v[0] * scaledContentWidth / contentBaseWidth;
+				let y_rel = v[1] * scaledContentHeight / contentBaseHeight;
+				let w_scaled = v[2] * scaledContentWidth / contentBaseWidth;
+				let h_scaled = v[3] * scaledContentHeight / contentBaseHeight;
 
-				if (x > backgroudWidth) { x = backgroudWidth}
-				if (y > backgroundHeight) { y = backgroundHeight}
+				if (x_rel > scaledContentWidth) { x_rel = scaledContentWidth; }
+				if (y_rel > scaledContentHeight) { y_rel = scaledContentHeight; }
 
-				if (x+w > backgroudWidth) {
-					w = Math.max(0, backgroudWidth-x)
+				if (x_rel + w_scaled > scaledContentWidth) {
+					w_scaled = Math.max(0, scaledContentWidth - x_rel);
 				}
 				
-				if (y+h > backgroundHeight) {
-					h = Math.max(0, backgroundHeight-y)
+				if (y_rel + h_scaled > scaledContentHeight) {
+					h_scaled = Math.max(0, scaledContentHeight - y_rel);
 				}
-
-				return [x, y, w, h]
+				return [x_rel, y_rel, w_scaled, h_scaled];
 			}
             
-			// Draw all the conditioning zones
 			for (const [k, v] of values.entries()) {
-
-				if (k == index) {continue}
-
-				const [x, y, w, h] = getDrawArea(v)
-
-				ctx.fillStyle = getDrawColor(k/values.length, "80") //colors[k] + "B0"
-				ctx.fillRect(widgetX+x, widgetY+y, w, h)
-
+				if (k == index) { continue; }
+				const [x_r, y_r, w_s, h_s] = getDrawArea(v);
+				ctx.fillStyle = getDrawColor(k/values.length, "80");
+				ctx.fillRect(slotX + drawBaseX + x_r, slotY + drawBaseY + y_r, w_s, h_s);
 			}
 
 			ctx.beginPath();
 			ctx.lineWidth = 1;
 
-			for (let x = 0; x <= width/64; x += 1) {
-				ctx.moveTo(widgetX+x*64*scale, widgetY);
-				ctx.lineTo(widgetX+x*64*scale, widgetY+backgroundHeight);
+			const gridSpacingScaled = 64 * scale;
+			for (let gx = 0; gx <= contentBaseWidth / 64; gx += 1) {
+				ctx.moveTo(slotX + drawBaseX + gx * gridSpacingScaled, slotY + drawBaseY);
+				ctx.lineTo(slotX + drawBaseX + gx * gridSpacingScaled, slotY + drawBaseY + scaledContentHeight);
 			}
-
-			for (let y = 0; y <= height/64; y += 1) {
-				ctx.moveTo(widgetX, widgetY+y*64*scale);
-				ctx.lineTo(widgetX+backgroudWidth, widgetY+y*64*scale);
+			for (let gy = 0; gy <= contentBaseHeight / 64; gy += 1) {
+				ctx.moveTo(slotX + drawBaseX, slotY + drawBaseY + gy * gridSpacingScaled);
+				ctx.lineTo(slotX + drawBaseX + scaledContentWidth, slotY + drawBaseY + gy * gridSpacingScaled);
 			}
 
 			ctx.strokeStyle = "#00000050";
 			ctx.stroke();
 			ctx.closePath();
 
-			// Draw currently selected zone
-			console.log(index)
-			let [x, y, w, h] = getDrawArea(values[index])
+			let [sel_x_r, sel_y_r, sel_w_s, sel_h_s] = getDrawArea(values[index]);
+			sel_w_s = Math.max(32*scale, sel_w_s);
+			sel_h_s = Math.max(32*scale, sel_h_s);
 
-			w = Math.max(32*scale, w)
-			h = Math.max(32*scale, h)
+			ctx.fillStyle = "#ffffff";
+			ctx.fillRect(slotX + drawBaseX + sel_x_r, slotY + drawBaseY + sel_y_r, sel_w_s, sel_h_s);
 
-			//ctx.fillStyle = "#"+(Number(`0x1${colors[index].substring(1)}`) ^ 0xFFFFFF).toString(16).substring(1).toUpperCase()
-			ctx.fillStyle = "#ffffff"
-			ctx.fillRect(widgetX+x, widgetY+y, w, h)
+			const selectedColor = getDrawColor(index/values.length, "FF");
+			ctx.fillStyle = selectedColor;
+			ctx.fillRect(slotX + drawBaseX + sel_x_r + border, slotY + drawBaseY + sel_y_r + border, sel_w_s - border*2, sel_h_s - border*2);
 
-			const selectedColor = getDrawColor(index/values.length, "FF")
-			ctx.fillStyle = selectedColor
-			ctx.fillRect(widgetX+x+border, widgetY+y+border, w-border*2, h-border*2)
-
-			// Display
 			ctx.beginPath();
-
 			ctx.arc(LiteGraph.NODE_SLOT_HEIGHT*0.5, LiteGraph.NODE_SLOT_HEIGHT*(index + 0.5)+4, 4, 0, Math.PI * 2);
 			ctx.fill();
-
 			ctx.lineWidth = 1;
 			ctx.strokeStyle = "white";
 			ctx.stroke();
@@ -185,9 +176,6 @@ function addMultiAreaConditioningCanvas(node, app) {
 	node.addCustomWidget(widget);
 
 	app.canvas.onDrawBackground = function () {
-		// Draw node isnt fired once the node is off the screen
-		// if it goes off screen quickly, the input may not be removed
-		// this shifts it off screen so it can be moved back if the node is visible.
 		for (let n in app.graph._nodes) {
 			n = graph._nodes[n];
 			for (let w in n.widgets) {
@@ -357,7 +345,6 @@ app.registerExtension({
 				}
 
 				this.onRemoved = function () {
-					// When removing this node we need to remove the input from the DOM
 					for (let y in this.widgets) {
 						if (this.widgets[y].canvas) {
 							this.widgets[y].canvas.remove();
