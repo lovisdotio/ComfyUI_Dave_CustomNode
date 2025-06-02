@@ -1,6 +1,6 @@
 console.log("[MultiAreaConditioning DEBUG] MultiAreaConditioning.js loaded");
 import { app } from "/scripts/app.js";
-import {CUSTOM_INT, recursiveLinkUpstream, transformFunc, swapInputs, renameNodeInputs, removeNodeInputs, getDrawColor, computeCanvasSize} from "./utils.js"
+import {CUSTOM_INT, recursiveLinkUpstream, transformFunc, swapInputs, renameNodeInputs, removeNodeInputs, getDrawColor} from "./utils.js"
 
 function addMultiAreaConditioningCanvas(node, app) {
 	console.log("[MultiAreaConditioning DEBUG] addMultiAreaConditioningCanvas called for node:", node.id);
@@ -8,226 +8,138 @@ function addMultiAreaConditioningCanvas(node, app) {
 	const widget = {
 		type: "customCanvas",
 		name: "MultiAreaConditioning-Canvas",
-		get value() {
-			return this.canvas.value;
+		computeSize: function(out) {
+			out = out || new Float32Array([0,200]);
+			out[1] = 200;
+			console.log(`[MultiAreaConditioning DEBUG] computeSize for ${this.name}, requesting height: ${out[1]}`);
+			return out;
 		},
-		set value(x) {
-			this.canvas.value = x;
-		},
-		draw: function (ctx, node, widgetWidth, widgetY) {
-			console.log("[MultiAreaConditioning DEBUG] widget.draw called for node:", node.id, "widgetWidth:", widgetWidth, "widgetY:", widgetY);
-			
-			// If we are initially offscreen when created we wont have received a resize event
-			// Calculate it here instead
-			if (!node.canvasHeight) {
-				console.log("[MultiAreaConditioning DEBUG] node.canvasHeight not set, calling computeCanvasSize.");
-				computeCanvasSize(node, node.size);
-			}
-			console.log("[MultiAreaConditioning DEBUG] node.canvasHeight:", node.canvasHeight, "node.size:", node.size);
-
-			const visible = true //app.canvasblank.ds.scale > 0.5 && this.type === "customCanvas";
-			const t = ctx.getTransform();
-			const margin = 10
-			const border = 2
-
-			const widgetHeight = node.canvasHeight
-            const values = node.properties["values"]
-			const width = Math.round(node.properties["width"])
-			const height = Math.round(node.properties["height"])
-
-			console.log("[MultiAreaConditioning DEBUG] Drawing params: width:", width, "height:", height, "widgetHeight (node.canvasHeight):", widgetHeight);
-
-			const scale = Math.min((widgetWidth-margin*2)/width, (widgetHeight-margin*2)/height)
-			console.log("[MultiAreaConditioning DEBUG] Calculated scale:", scale);
-
-            let indexToUse = 0; // Default to 0 as a safe fallback
-            const widgetIdx = node.comfyWidgetIndexForAreaSelector; // Should be 3
-
-            if (node.widgets && widgetIdx >= 0 && widgetIdx < node.widgets.length) {
-                const areaSelectorWidget = node.widgets[widgetIdx];
-                if (areaSelectorWidget && areaSelectorWidget.name === "index") { // Check name for safety
-                    if (areaSelectorWidget.value !== null && typeof areaSelectorWidget.value !== 'undefined') {
-                        let numVal = Number(areaSelectorWidget.value); // Use Number() for conversion
-                        if (!isNaN(numVal)) {
-                            indexToUse = Math.round(numVal);
-                        } else {
-                            console.warn(`[MultiAreaConditioning DEBUG] Draw: areaSelectorWidget.value ('${areaSelectorWidget.value}') is NaN after Number(). Using fallback index 0. Node ID: ${node.id}`);
-                        }
-                    } else {
-                        console.warn(`[MultiAreaConditioning DEBUG] Draw: areaSelectorWidget.value is null or undefined. Using fallback index 0. Node ID: ${node.id}`);
-                    }
-                } else {
-                    console.error(`[MultiAreaConditioning DEBUG] Draw: Widget at index ${widgetIdx} is not the 'index' widget or is missing. Widget:`, areaSelectorWidget, `Node ID: ${node.id}. Using fallback index 0.`);
-                }
-            } else {
-                console.error(`[MultiAreaConditioning DEBUG] Draw: Widgets array not populated correctly or widgetIndex ${widgetIdx} is out of bounds. Node ID: ${node.id}. Using fallback index 0.`);
-            }
-            console.log(`[MultiAreaConditioning DEBUG] Draw: Final indexToUse for drawing: ${indexToUse}`);
-
-			Object.assign(this.canvas.style, {
-				left: `${t.e}px`,
-				top: `${t.f + (widgetY*t.d)}px`,
-				width: `${widgetWidth * t.a}px`,
-				height: `${widgetHeight * t.d}px`,
-				position: "absolute",
-				zIndex: 1000,
-				fontSize: `${t.d * 10.0}px`,
-			});
-			console.log("[MultiAreaConditioning DEBUG] Canvas style applied. transform_e:", t.e, "transform_f:", t.f, "transform_d:", t.d, "widgetWidth_transform_a:", widgetWidth * t.a);
-
-			this.canvas.hidden = !visible;
-			console.log("[MultiAreaConditioning DEBUG] Canvas hidden:", this.canvas.hidden);
-
-            let backgroudWidth = width * scale
-            let backgroundHeight = height * scale
-
-			let xOffset = margin
-			if (backgroudWidth < widgetWidth) {
-				xOffset += (widgetWidth-backgroudWidth)/2 - margin
-			}
-			let yOffset = margin
-			if (backgroundHeight < widgetHeight) {
-				yOffset += (widgetHeight-backgroundHeight)/2 - margin
+		draw: function (ctx, node, widgetWidth, widgetY, widgetHeight) {
+			if (widgetWidth <=0 || widgetHeight <=0) {
+				return;
 			}
 
-			let widgetX = xOffset
-			widgetY = widgetY + yOffset
+			const margin = 5;
+			const border = 2;
 
-			ctx.fillStyle = "#000000"
-			ctx.fillRect(widgetX-border, widgetY-border, backgroudWidth+border*2, backgroundHeight+border*2)
+			const values = node.properties["values"];
+			const previewWidth = Math.round(node.properties["width"]);
+			const previewHeight = Math.round(node.properties["height"]);
 
-			ctx.fillStyle = globalThis.LiteGraph.NODE_DEFAULT_BGCOLOR
-			ctx.fillRect(widgetX, widgetY, backgroudWidth, backgroundHeight);
+			let indexToUse = 0;
+			const widgetIdx = node.comfyWidgetIndexForAreaSelector;
+			const areaSelectorWidget = node.widgets && node.widgets[widgetIdx];
+
+			if (areaSelectorWidget && areaSelectorWidget.name === "index" && areaSelectorWidget.value !== null && typeof areaSelectorWidget.value !== 'undefined') {
+				let numVal = Number(areaSelectorWidget.value);
+				if (!isNaN(numVal)) { indexToUse = Math.round(numVal); }
+			}
+
+			let scale = 0.1;
+			if (previewWidth > 0 && previewHeight > 0) {
+				scale = Math.min((widgetWidth - margin * 2) / previewWidth, (widgetHeight - margin * 2) / previewHeight);
+			}
+			 if (scale <= 0) {
+				scale = 0.01;
+			}
+
+			let backgroundRenderWidth = previewWidth * scale;
+			let backgroundRenderHeight = previewHeight * scale;
+
+			let xOffset = margin;
+			if (backgroundRenderWidth < widgetWidth) {
+				xOffset = (widgetWidth - backgroundRenderWidth) / 2;
+			}
+			let yOffset = margin;
+			if (backgroundRenderHeight < widgetHeight) {
+				yOffset = (widgetHeight - backgroundRenderHeight) / 2;
+			}
+
+			ctx.save();
+			ctx.beginPath();
+			ctx.rect(0, 0, widgetWidth, widgetHeight);
+			ctx.clip();
+
+			ctx.translate(xOffset, yOffset);
+
+			ctx.fillStyle = "#000000";
+			ctx.fillRect(-border, -border, backgroundRenderWidth + border * 2, backgroundRenderHeight + border * 2);
+
+			ctx.fillStyle = globalThis.LiteGraph.NODE_DEFAULT_BGCOLOR;
+			ctx.fillRect(0, 0, backgroundRenderWidth, backgroundRenderHeight);
 
 			function getDrawArea(v) {
-				let x = v[0]*backgroudWidth/width
-				let y = v[1]*backgroundHeight/height
-				let w = v[2]*backgroudWidth/width
-				let h = v[3]*backgroundHeight/height
+				let areaX = v[0] * scale;
+				let areaY = v[1] * scale;
+				let areaW = v[2] * scale;
+				let areaH = v[3] * scale;
 
-				if (x > backgroudWidth) { x = backgroudWidth}
-				if (y > backgroundHeight) { y = backgroundHeight}
+				if (areaX > backgroundRenderWidth) { areaX = backgroundRenderWidth; areaW = 0; }
+				if (areaY > backgroundRenderHeight) { areaY = backgroundRenderHeight; areaH = 0; }
 
-				if (x+w > backgroudWidth) {
-					w = Math.max(0, backgroudWidth-x)
+				if (areaX + areaW > backgroundRenderWidth) {
+					areaW = Math.max(0, backgroundRenderWidth - areaX);
 				}
 				
-				if (y+h > backgroundHeight) {
-					h = Math.max(0, backgroundHeight-y)
+				if (areaY + areaH > backgroundRenderHeight) {
+					areaH = Math.max(0, backgroundRenderHeight - areaY);
 				}
-
-				return [x, y, w, h]
+				return [areaX, areaY, areaW, areaH];
 			}
             
-			// Draw all the conditioning zones
-			for (const [k, v] of values.entries()) {
+			if (values && values.length > 0) {
+				for (const [k, v] of values.entries()) {
+					if (k == indexToUse) {continue}
+					if (!v || v.length < 4) continue;
 
-				if (k == indexToUse) {continue}
-
-				const [x, y, w, h] = getDrawArea(v)
-
-				ctx.fillStyle = getDrawColor(k/values.length, "80") //colors[k] + "B0"
-				ctx.fillRect(widgetX+x, widgetY+y, w, h)
-
+					const [rectX, rectY, rectW, rectH] = getDrawArea(v);
+					if (rectW > 0 && rectH > 0) {
+						ctx.fillStyle = getDrawColor(k/values.length, "80");
+						ctx.fillRect(rectX, rectY, rectW, rectH);
+					}
+				}
 			}
 
 			ctx.beginPath();
 			ctx.lineWidth = 1;
-
-			for (let x = 0; x <= width/64; x += 1) {
-				ctx.moveTo(widgetX+x*64*scale, widgetY);
-				ctx.lineTo(widgetX+x*64*scale, widgetY+backgroundHeight);
+			const sixtyFourScaled = 64 * scale;
+			for (let gx = 0; gx <= previewWidth; gx += 64) {
+				ctx.moveTo(gx * scale, 0);
+				ctx.lineTo(gx * scale, backgroundRenderHeight);
 			}
-
-			for (let y = 0; y <= height/64; y += 1) {
-				ctx.moveTo(widgetX, widgetY+y*64*scale);
-				ctx.lineTo(widgetX+backgroudWidth, widgetY+y*64*scale);
+			for (let gy = 0; gy <= previewHeight; gy += 64) {
+				ctx.moveTo(0, gy * scale);
+				ctx.lineTo(backgroundRenderWidth, gy * scale);
 			}
-
 			ctx.strokeStyle = "#00000050";
 			ctx.stroke();
 			ctx.closePath();
 
-			// Draw currently selected zone
-			console.log(indexToUse)
-			let [x, y, w, h] = getDrawArea(values[indexToUse])
+			if (values && indexToUse >= 0 && indexToUse < values.length) {
+				const selectedValue = values[indexToUse];
+				if (selectedValue && selectedValue.length >=4) {
+					let [rectX, rectY, rectW, rectH] = getDrawArea(selectedValue);
 
-			w = Math.max(32*scale, w)
-			h = Math.max(32*scale, h)
+					const minVisSize = 32 * scale;
+					rectW = Math.max(minVisSize, rectW);
+					rectH = Math.max(minVisSize, rectH);
 
-			//ctx.fillStyle = "#"+(Number(`0x1${colors[index].substring(1)}`) ^ 0xFFFFFF).toString(16).substring(1).toUpperCase()
-			ctx.fillStyle = "#ffffff"
-			ctx.fillRect(widgetX+x, widgetY+y, w, h)
-
-			const selectedColor = getDrawColor(indexToUse/values.length, "FF")
-			ctx.fillStyle = selectedColor
-			ctx.fillRect(widgetX+x+border, widgetY+y+border, w-border*2, h-border*2)
-
-			// Display
-			ctx.beginPath();
-
-			ctx.arc(LiteGraph.NODE_SLOT_HEIGHT*0.5, LiteGraph.NODE_SLOT_HEIGHT*(indexToUse + 0.5)+4, 4, 0, Math.PI * 2);
-			ctx.fill();
-
-			ctx.lineWidth = 1;
-			ctx.strokeStyle = "white";
-			ctx.stroke();
-
-			if (node.selected) {
-				const connectedNodes = recursiveLinkUpstream(node, node.inputs[indexToUse].type, 0, indexToUse)
-				
-				if (connectedNodes.length !== 0) {
-					for (let [node_ID, depth] of connectedNodes) {
-						let connectedNode = node.graph._nodes_by_id[node_ID]
-						if (connectedNode.type != node.type) {
-							const [x, y] = connectedNode.pos
-							const [w, h] = connectedNode.size
-							const offset = 5
-							const titleHeight = LiteGraph.NODE_TITLE_HEIGHT * (connectedNode.type === "Reroute"  ? 0 : 1)
-
-							ctx.strokeStyle = selectedColor
-							ctx.lineWidth = 5;
-							ctx.strokeRect(x-offset-node.pos[0], y-offset-node.pos[1]-titleHeight, w+offset*2, h+offset*2+titleHeight)
-						}
+					if (rectW > 0 && rectH > 0) {
+						ctx.fillStyle = "#FFFFFF";
+						ctx.fillRect(rectX, rectY, rectW, rectH);
+						const selectedColor = getDrawColor(indexToUse/values.length, "FF");
+						ctx.fillStyle = selectedColor;
+						ctx.fillRect(rectX + border, rectY + border, rectW - border * 2, rectH - border * 2);
 					}
 				}
 			}
-			ctx.lineWidth = 1;
-			ctx.closePath();
-
+			ctx.restore();
 		},
 	};
 
-	widget.canvas = document.createElement("canvas");
-	widget.canvas.className = "dave-custom-canvas";
-
-	widget.parent = node;
-	document.body.appendChild(widget.canvas);
-
 	node.addCustomWidget(widget);
 
-	// app.canvas.onDrawBackground = function () {
-	// 	// Draw node isnt fired once the node is off the screen
-	// 	// if it goes off screen quickly, the input may not be removed
-	// 	// this shifts it off screen so it can be moved back if the node is visible.
-	// 	for (const nodeId in app.graph._nodes) { 
-	// 		const n = app.graph._nodes[nodeId];
-	// 		if (n.widgets) {
-	// 			for (const w of n.widgets) { 
-	// 				if (w && w.canvas instanceof HTMLElement && w.type === "customCanvas") { 
-	// 					// wid.canvas.style.left = -8000 + "px"; // Temporarily disable this
-	// 					// wid.canvas.style.position = "absolute"; // Temporarily disable this
-	// 				}
-	// 			}
-	// 		}
-	// 	}
-	// };
-
-	node.onResize = function (size) {
-		computeCanvasSize(node, size);
-	}
-
-	return { minWidth: 200, minHeight: 200, widget }
+	return { minWidth: 200, minHeight: 350, widget }
 }
 
 app.registerExtension({
@@ -244,54 +156,52 @@ app.registerExtension({
 				this.setProperty("values", [[0, 0, 0, 0, 1.0], [0, 0, 0, 0, 1.0]]);
 
 				this.selected = false;
-				this.comfyWidgetIndexForAreaSelector = 3; // Widget holding the current area index (0-indexed)
+				this.comfyWidgetIndexForAreaSelector = 2;
 
-                this.serialize_widgets = true;
+				this.serialize_widgets = true;
 
-                this.updateIndexWidgetMax = function() {
-                    const areaSelectorWidget = this.widgets[this.comfyWidgetIndexForAreaSelector];
-                    if (areaSelectorWidget) {
-                        const numInputs = this.inputs ? this.inputs.length : 0;
-                        const newMax = numInputs > 0 ? numInputs - 1 : 0;
-                        areaSelectorWidget.options.max = newMax;
-                        
-                        if (areaSelectorWidget.value > newMax) {
-                            areaSelectorWidget.value = newMax;
-                        }
-                        // Force LiteGraph to notice the widget options change, hopefully redrawing it.
-                        if (this.onWidgetChanged) { 
-                            this.onWidgetChanged(areaSelectorWidget.name, areaSelectorWidget.value, areaSelectorWidget.options);
-                        }
-                        this.setDirtyCanvas(true, true); // Crucial for UI to update widget visuals
-                    } else {
-                        console.warn("[MultiAreaConditioning] updateIndexWidgetMax: Area selector widget not found at index", this.comfyWidgetIndexForAreaSelector);
-                    }
-                };
+				this.updateIndexWidgetMax = function() {
+					const areaSelectorWidget = this.widgets[this.comfyWidgetIndexForAreaSelector];
+					if (areaSelectorWidget) {
+						const numInputs = this.inputs ? this.inputs.length : 0;
+						const newMax = numInputs > 0 ? numInputs - 1 : 0;
+						if (areaSelectorWidget.options.max !== newMax) {
+							areaSelectorWidget.options.max = newMax;
+						}
+						if (areaSelectorWidget.value > newMax) {
+							areaSelectorWidget.value = newMax;
+						}
+						if (this.onWidgetChanged) { 
+							this.onWidgetChanged(areaSelectorWidget.name, areaSelectorWidget.value, areaSelectorWidget.options);
+						}
+						this.setDirtyCanvas(true, true);
+					} else {
+						console.warn("[MultiAreaConditioning] updateIndexWidgetMax: Area selector widget not found at index", this.comfyWidgetIndexForAreaSelector);
+					}
+				};
 
-				CUSTOM_INT(this, "resolutionX", 512, function (v, _, node) {const s = this.options.step / 10; this.value = Math.round(v / s) * s; node.properties["width"] = this.value; node.setDirtyCanvas(true,true); });
-				CUSTOM_INT(this, "resolutionY", 512, function (v, _, node) {const s = this.options.step / 10; this.value = Math.round(v / s) * s; node.properties["height"] = this.value; node.setDirtyCanvas(true,true); });
-                
-				addMultiAreaConditioningCanvas(this, app);
-
+				CUSTOM_INT(this, "resolutionX", 512, function (v, widget, node) {node.properties["width"] = Math.round(v / (widget.options.step/10)) * (widget.options.step/10); node.setDirtyCanvas(true,true); });
+				CUSTOM_INT(this, "resolutionY", 512, function (v, widget, node) {node.properties["height"] = Math.round(v / (widget.options.step/10)) * (widget.options.step/10); node.setDirtyCanvas(true,true); });
+				
 				const initialMaxIndex = this.inputs ? (this.inputs.length > 0 ? this.inputs.length - 1 : 0) : 0;
 				CUSTOM_INT(
 					this,
-					"index", // This is the area selector widget
+					"index",
 					0,
-					function (v, widget, node) { // v is the new index value
-                        console.log(`[MultiAreaConditioning DEBUG] Index widget CALLBACK triggered. New value v: ${v}, widget.value: ${widget.value}, widget.options.max: ${widget.options.max}`);
+					function (v, widget, node) {
+						console.log(`[MultiAreaConditioning DEBUG] Index widget CALLBACK triggered. New value v: ${v}, widget.value: ${widget.value}, widget.options.max: ${widget.options.max}`);
 						let values = node.properties["values"];
-                        if (values && v >= 0 && v < values.length && values[v]) {
-                            node.widgets[4].value = values[v][0]; // x
-                            node.widgets[5].value = values[v][1]; // y
-                            node.widgets[6].value = values[v][2]; // width
-                            node.widgets[7].value = values[v][3]; // height
-                            if (values[v].length <= 4 || values[v][4] === undefined) {values[v][4] = 1.0;} // Ensure strength exists
-                            node.widgets[8].value = values[v][4]; // strength
-                        } else {
-                            console.warn(`[MultiAreaConditioning] Index widget callback: Attempted to access values[${v}] but it's out of bounds or undefined. Current values:`, JSON.stringify(values));
-                        }
-                        node.setDirtyCanvas(true, true); // Redraw canvas for visual feedback
+						if (values && v >= 0 && v < values.length && values[v]) {
+							node.widgets[3].value = values[v][0];
+							node.widgets[4].value = values[v][1];
+							node.widgets[5].value = values[v][2];
+							node.widgets[6].value = values[v][3];
+							if (values[v].length <= 4 || values[v][4] === undefined) {values[v][4] = 1.0;}
+							node.widgets[7].value = values[v][4];
+						} else {
+							console.warn(`[MultiAreaConditioning] Index widget callback: Attempted to access values[${v}] out of bounds. Values length: ${values ? values.length : 'N/A'}. Current values:`, JSON.stringify(values));
+						}
+						node.setDirtyCanvas(true, true);
 					},
 					{ step: 1, max: initialMaxIndex } 
 				);
@@ -300,9 +210,11 @@ app.registerExtension({
 				CUSTOM_INT(this, "y", 0, function (v, widget, node) {transformFunc(widget, v, node, 1);});
 				CUSTOM_INT(this, "width", 0, function (v, widget, node) {transformFunc(widget, v, node, 2);});
 				CUSTOM_INT(this, "height", 0, function (v, widget, node) {transformFunc(widget, v, node, 3);});
-				CUSTOM_INT(this, "strength", 1, function (v, widget, node) {transformFunc(widget, v, node, 4);}, {"min": 0.0, "max": 10.0, "step": 0.1, "precision": 2});
+				CUSTOM_INT(this, "strength", 1.0, function (v, widget, node) {transformFunc(widget, v, node, 4);}, {"min": 0.0, "max": 10.0, "step": 0.1, "precision": 2});
 
-                this.updateIndexWidgetMax(); // Initial call to set max correctly
+				addMultiAreaConditioningCanvas(this, app);
+
+				this.updateIndexWidgetMax();
 
 				this.getExtraMenuOptions = function(_, options) {
 					const areaIndexValue = this.widgets[this.comfyWidgetIndexForAreaSelector] ? this.widgets[this.comfyWidgetIndexForAreaSelector].value : "N/A";
@@ -319,7 +231,7 @@ app.registerExtension({
 								renameNodeInputs(this, "conditioning");
 
 								this.properties["values"].splice(currentSelectedAreaIndex, 0, [0, 0, 0, 0, 1.0]);
-                                this.updateIndexWidgetMax();
+								this.updateIndexWidgetMax();
 								this.setDirtyCanvas(true, true);
 							},
 						},
@@ -335,7 +247,7 @@ app.registerExtension({
 								renameNodeInputs(this, "conditioning");
 
 								this.properties["values"].splice(currentSelectedAreaIndex + 1, 0, [0, 0, 0, 0, 1.0]);
-                                this.updateIndexWidgetMax();
+								this.updateIndexWidgetMax();
 								this.setDirtyCanvas(true, true);
 							},
 						},
@@ -348,7 +260,7 @@ app.registerExtension({
 									renameNodeInputs(this, "conditioning");
 									this.properties["values"].splice(index-1,0,this.properties["values"].splice(index,1)[0]);
 									this.widgets[this.comfyWidgetIndexForAreaSelector].value = index-1;
-                                    this.updateIndexWidgetMax(); // Max doesn't change, but value might need refresh if it was at max
+									this.updateIndexWidgetMax();
 									this.setDirtyCanvas(true, true);
 								}
 							},
@@ -362,7 +274,7 @@ app.registerExtension({
 									renameNodeInputs(this, "conditioning");
 									this.properties["values"].splice(index+1,0,this.properties["values"].splice(index,1)[0]);
 									this.widgets[this.comfyWidgetIndexForAreaSelector].value = index+1;
-                                    this.updateIndexWidgetMax();
+									this.updateIndexWidgetMax();
 									this.setDirtyCanvas(true, true);
 								}
 							},
@@ -371,19 +283,17 @@ app.registerExtension({
 							content: `remove currently selected input ${areaIndexValue}`,
 							callback: () => {
 								const indexToRemove = this.widgets[this.comfyWidgetIndexForAreaSelector].value;
-                                // Prevent removing if only two inputs are left (as per original removeNodeInputs logic)
-                                if (this.inputs.length <= 2) { 
-                                    console.log("[MultiAreaConditioning] Cannot remove input, minimum of 2 required."); 
-                                    return; 
-                                }
+								if (this.inputs.length <= 2) { 
+									console.log("[MultiAreaConditioning] Cannot remove input, minimum of 2 required."); 
+									return; 
+								}
 								removeNodeInputs(this, [indexToRemove]); 
 								renameNodeInputs(this, "conditioning");
-                                this.updateIndexWidgetMax(); 
-                                // Callback for index widget might need to be manually triggered if value changed due to removal
-                                const currentAreaSelectorWidget = this.widgets[this.comfyWidgetIndexForAreaSelector];
-                                if (currentAreaSelectorWidget && currentAreaSelectorWidget.callback) {
-                                    currentAreaSelectorWidget.callback(currentAreaSelectorWidget.value, currentAreaSelectorWidget, this);
-                                }
+								this.updateIndexWidgetMax(); 
+								const currentAreaSelectorWidget = this.widgets[this.comfyWidgetIndexForAreaSelector];
+								if (currentAreaSelectorWidget && currentAreaSelectorWidget.callback) {
+									currentAreaSelectorWidget.callback(currentAreaSelectorWidget.value, currentAreaSelectorWidget, this);
+								}
 								this.setDirtyCanvas(true, true);
 							},
 						},
@@ -393,23 +303,22 @@ app.registerExtension({
 								let indexesToRemove = [];
 								for (let i = 0; i < this.inputs.length; i++) {
 									if (!this.inputs[i].link) {
-                                        // Check if we can remove this input (don't go below 2 inputs)
-                                        if (this.inputs.length - indexesToRemove.length > 2) {
-										    indexesToRemove.push(i);
-                                        } else {
-                                            console.log("[MultiAreaConditioning] Skipping removal of unconnected input to maintain minimum of 2.");
-                                        }
+										if (this.inputs.length - indexesToRemove.length > 2) {
+											indexesToRemove.push(i);
+										} else {
+											console.log("[MultiAreaConditioning] Skipping removal of unconnected input to maintain minimum of 2.");
+										}
 									}
 								}
 
 								if (indexesToRemove.length) {
 									removeNodeInputs(this, indexesToRemove);
 									renameNodeInputs(this, "conditioning");
-                                    this.updateIndexWidgetMax();
-                                    const currentAreaSelectorWidget = this.widgets[this.comfyWidgetIndexForAreaSelector];
-                                    if (currentAreaSelectorWidget && currentAreaSelectorWidget.callback) {
-                                        currentAreaSelectorWidget.callback(currentAreaSelectorWidget.value, currentAreaSelectorWidget, this);
-                                    }
+									this.updateIndexWidgetMax();
+									const currentAreaSelectorWidget = this.widgets[this.comfyWidgetIndexForAreaSelector];
+									if (currentAreaSelectorWidget && currentAreaSelectorWidget.callback) {
+										currentAreaSelectorWidget.callback(currentAreaSelectorWidget.value, currentAreaSelectorWidget, this);
+									}
 									this.setDirtyCanvas(true, true);
 								}
 							},
@@ -427,11 +336,11 @@ app.registerExtension({
 			
 				this.onSelected = function () {
 					this.selected = true;
-                    this.setDirtyCanvas(true,true);
+					this.setDirtyCanvas(true,true);
 				}
 				this.onDeselected = function () {
 					this.selected = false;
-                    this.setDirtyCanvas(true,true);
+					this.setDirtyCanvas(true,true);
 				}
 
 				return r;
@@ -440,28 +349,25 @@ app.registerExtension({
 	},
 	loadedGraphNode(node, _) {
 		if (node.type === "MultiAreaConditioning") {
-            // Manually re-create the helper function if it doesn't exist (e.g. loading old graph)
-            if (typeof node.updateIndexWidgetMax !== 'function') {
-                node.comfyWidgetIndexForAreaSelector = 3; // Default assumption
-                node.updateIndexWidgetMax = function() {
-                    const areaSelectorWidget = this.widgets[this.comfyWidgetIndexForAreaSelector];
-                    if (areaSelectorWidget) {
-                        const numInputs = this.inputs ? this.inputs.length : 0;
-                        const newMax = numInputs > 0 ? numInputs - 1 : 0;
-                        areaSelectorWidget.options.max = newMax;
-                        if (areaSelectorWidget.value > newMax) {
-                            areaSelectorWidget.value = newMax;
-                        }
-                        if (this.onWidgetChanged) { 
-                            this.onWidgetChanged(areaSelectorWidget.name, areaSelectorWidget.value, areaSelectorWidget.options);
-                        }
-                        this.setDirtyCanvas(true, true);
-                    } else {
-                        console.warn("[MultiAreaConditioning] updateIndexWidgetMax (fallback): Area selector widget not found at index", this.comfyWidgetIndexForAreaSelector);
-                    }
-                };
-            }
-            node.updateIndexWidgetMax();
+			node.comfyWidgetIndexForAreaSelector = 2;
+			if (typeof node.updateIndexWidgetMax !== 'function') {
+				node.updateIndexWidgetMax = function() {
+					const areaSelectorWidget = this.widgets[this.comfyWidgetIndexForAreaSelector];
+					if (areaSelectorWidget) {
+						const numInputs = this.inputs ? this.inputs.length : 0;
+						const newMax = numInputs > 0 ? numInputs - 1 : 0;
+						if(areaSelectorWidget.options.max !== newMax) areaSelectorWidget.options.max = newMax;
+						if (areaSelectorWidget.value > newMax) areaSelectorWidget.value = newMax;
+						if (this.onWidgetChanged) { this.onWidgetChanged(areaSelectorWidget.name, areaSelectorWidget.value, areaSelectorWidget.options);}
+						this.setDirtyCanvas(true, true);
+					} else { console.warn("[MultiAreaConditioning] updateIndexWidgetMax (fallback): Area selector not found"); }
+				};
+			}
+			node.updateIndexWidgetMax();
+			const indexWidget = node.widgets[node.comfyWidgetIndexForAreaSelector];
+			if(indexWidget && indexWidget.callback) {
+				indexWidget.callback(indexWidget.value, indexWidget, node);
+			}
 		}
 	},
 	
