@@ -40,12 +40,26 @@ export function recursiveLinkUpstream(node, type, depth, index=null) {
 	return connections
 }
 
-export function transformFunc(widget, value, node, index) {
+export function transformFunc(widget, value, node, propertyIndexToChange) {
 	const s = widget.options.step / 10;
 	widget.value = Math.round(value / s) * s;
-	node.properties["values"][node.widgets[node.index].value][index] = widget.value
-	if (node.widgets_values) { 
-		node.widgets_values[2] = node.properties["values"].join()
+
+	const areaSelectorWidgetIdx = node.comfyWidgetIndexForAreaSelector;
+	if (areaSelectorWidgetIdx === undefined || !node.widgets[areaSelectorWidgetIdx]) {
+		console.error("[transformFunc] Error: node.comfyWidgetIndexForAreaSelector is not defined or widget not found. Cannot update area properties.");
+		return;
+	}
+	const selectedAreaIndex = node.widgets[areaSelectorWidgetIdx].value;
+
+	if (node.properties && node.properties["values"] && selectedAreaIndex < node.properties["values"].length) {
+		node.properties["values"][selectedAreaIndex][propertyIndexToChange] = widget.value;
+	} else {
+		console.error(`[transformFunc] Error: Cannot access values[${selectedAreaIndex}] for property update.`);
+		return;
+	}
+
+	if (node.setDirtyCanvas) {
+		node.setDirtyCanvas(true, true);
 	}
 }
 

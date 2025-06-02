@@ -216,148 +216,184 @@ app.registerExtension({
 				console.log("[MultiAreaConditioning DEBUG] onNodeCreated called for node:", this.id);
 				const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
 
-				this.setProperty("width", 512)
-				this.setProperty("height", 512)
-				this.setProperty("values", [[0, 0, 0, 0, 1.0], [0, 0, 0, 0, 1.0]])
+				this.setProperty("width", 512);
+				this.setProperty("height", 512);
+				this.setProperty("values", [[0, 0, 0, 0, 1.0], [0, 0, 0, 0, 1.0]]);
 
-				this.selected = false
-				this.index = 3
+				this.selected = false;
+				this.comfyWidgetIndexForAreaSelector = 3; // Widget holding the current area index (0-indexed)
 
                 this.serialize_widgets = true;
 
-				CUSTOM_INT(this, "resolutionX", 512, function (v, _, node) {const s = this.options.step / 10; this.value = Math.round(v / s) * s; node.properties["width"] = this.value})
-				CUSTOM_INT(this, "resolutionY", 512, function (v, _, node) {const s = this.options.step / 10; this.value = Math.round(v / s) * s; node.properties["height"] = this.value})
-                
-				addMultiAreaConditioningCanvas(this, app)
+                this.updateIndexWidgetMax = function() {
+                    const areaSelectorWidget = this.widgets[this.comfyWidgetIndexForAreaSelector];
+                    if (areaSelectorWidget) {
+                        const numInputs = this.inputs ? this.inputs.length : 0;
+                        const newMax = numInputs > 0 ? numInputs - 1 : 0;
+                        areaSelectorWidget.options.max = newMax;
+                        
+                        if (areaSelectorWidget.value > newMax) {
+                            areaSelectorWidget.value = newMax;
+                        }
+                        // Force LiteGraph to notice the widget options change, hopefully redrawing it.
+                        if (this.onWidgetChanged) { 
+                            this.onWidgetChanged(areaSelectorWidget.name, areaSelectorWidget.value, areaSelectorWidget.options);
+                        }
+                        this.setDirtyCanvas(true, true); // Crucial for UI to update widget visuals
+                    } else {
+                        console.warn("[MultiAreaConditioning] updateIndexWidgetMax: Area selector widget not found at index", this.comfyWidgetIndexForAreaSelector);
+                    }
+                };
 
+				CUSTOM_INT(this, "resolutionX", 512, function (v, _, node) {const s = this.options.step / 10; this.value = Math.round(v / s) * s; node.properties["width"] = this.value; node.setDirtyCanvas(true,true); });
+				CUSTOM_INT(this, "resolutionY", 512, function (v, _, node) {const s = this.options.step / 10; this.value = Math.round(v / s) * s; node.properties["height"] = this.value; node.setDirtyCanvas(true,true); });
+                
+				addMultiAreaConditioningCanvas(this, app);
+
+				const initialMaxIndex = this.inputs ? (this.inputs.length > 0 ? this.inputs.length - 1 : 0) : 0;
 				CUSTOM_INT(
 					this,
-					"index",
+					"index", // This is the area selector widget
 					0,
-					function (v, _, node) {
-
-						let values = node.properties["values"]
-
-						node.widgets[4].value = values[v][0]
-						node.widgets[5].value = values[v][1]
-						node.widgets[6].value = values[v][2]
-						node.widgets[7].value = values[v][3]
-						if (!values[v][4]) {values[v][4] = 1.0}
-						node.widgets[8].value = values[v][4]
+					function (v, widget, node) { // v is the new index value
+						let values = node.properties["values"];
+                        if (values && v >= 0 && v < values.length && values[v]) {
+                            node.widgets[4].value = values[v][0]; // x
+                            node.widgets[5].value = values[v][1]; // y
+                            node.widgets[6].value = values[v][2]; // width
+                            node.widgets[7].value = values[v][3]; // height
+                            if (values[v].length <= 4 || values[v][4] === undefined) {values[v][4] = 1.0;} // Ensure strength exists
+                            node.widgets[8].value = values[v][4]; // strength
+                        } else {
+                            console.warn(`[MultiAreaConditioning] Index widget callback: Attempted to access values[${v}] but it's out of bounds or undefined. Current values:`, JSON.stringify(values));
+                        }
+                        node.setDirtyCanvas(true, true); // Redraw canvas for visual feedback
 					},
-					{ step: 1, max: 1 }
-
-				)
+					{ step: 1, max: initialMaxIndex } 
+				);
 				
-				CUSTOM_INT(this, "x", 0, function (v, _, node) {transformFunc(this, v, node, 0)})
-				CUSTOM_INT(this, "y", 0, function (v, _, node) {transformFunc(this, v, node, 1)})
-				CUSTOM_INT(this, "width", 0, function (v, _, node) {transformFunc(this, v, node, 2)})
-				CUSTOM_INT(this, "height", 0, function (v, _, node) {transformFunc(this, v, node, 3)})
-				CUSTOM_INT(this, "strength", 1, function (v, _, node) {transformFunc(this, v, node, 4)}, {"min": 0.0, "max": 10.0, "step": 0.1, "precision": 2})
+				CUSTOM_INT(this, "x", 0, function (v, widget, node) {transformFunc(widget, v, node, 0);});
+				CUSTOM_INT(this, "y", 0, function (v, widget, node) {transformFunc(widget, v, node, 1);});
+				CUSTOM_INT(this, "width", 0, function (v, widget, node) {transformFunc(widget, v, node, 2);});
+				CUSTOM_INT(this, "height", 0, function (v, widget, node) {transformFunc(widget, v, node, 3);});
+				CUSTOM_INT(this, "strength", 1, function (v, widget, node) {transformFunc(widget, v, node, 4);}, {"min": 0.0, "max": 10.0, "step": 0.1, "precision": 2});
+
+                this.updateIndexWidgetMax(); // Initial call to set max correctly
 
 				this.getExtraMenuOptions = function(_, options) {
+					const areaIndexValue = this.widgets[this.comfyWidgetIndexForAreaSelector] ? this.widgets[this.comfyWidgetIndexForAreaSelector].value : "N/A";
 					options.unshift(
 						{
-							content: `insert input above ${this.widgets[this.index].value} /\\`,
+							content: `insert input above ${areaIndexValue} /\\`,
 							callback: () => {
-								this.addInput("conditioning", "CONDITIONING")
+								const currentSelectedAreaIndex = this.widgets[this.comfyWidgetIndexForAreaSelector].value;
+								this.addInput("conditioning", "CONDITIONING");
 								
-								const inputLenth = this.inputs.length-1
-								const index = this.widgets[this.index].value
-
-								for (let i = inputLenth; i > index; i--) {
-									swapInputs(this, i, i-1)
+								for (let i = this.inputs.length - 1; i > currentSelectedAreaIndex; i--) {
+									swapInputs(this, i, i - 1);
 								}
-								renameNodeInputs(this, "conditioning")
+								renameNodeInputs(this, "conditioning");
 
-								this.properties["values"].splice(index, 0, [0, 0, 0, 0, 1])
-								this.widgets[this.index].options.max = inputLenth
-
-								this.setDirtyCanvas(true);
-
+								this.properties["values"].splice(currentSelectedAreaIndex, 0, [0, 0, 0, 0, 1.0]);
+                                this.updateIndexWidgetMax();
+								this.setDirtyCanvas(true, true);
 							},
 						},
 						{
-							content: `insert input below ${this.widgets[this.index].value} \\/`,
+							content: `insert input below ${areaIndexValue} \\/`,
 							callback: () => {
-								this.addInput("conditioning", "CONDITIONING")
-								
-								const inputLenth = this.inputs.length-1
-								const index = this.widgets[this.index].value
+								const currentSelectedAreaIndex = this.widgets[this.comfyWidgetIndexForAreaSelector].value;
+								this.addInput("conditioning", "CONDITIONING");
 
-								for (let i = inputLenth; i > index+1; i--) {
-									swapInputs(this, i, i-1)
+								for (let i = this.inputs.length - 1; i > currentSelectedAreaIndex + 1; i--) {
+									swapInputs(this, i, i - 1);
 								}
-								renameNodeInputs(this, "conditioning")
+								renameNodeInputs(this, "conditioning");
 
-								this.properties["values"].splice(index+1, 0, [0, 0, 0, 0, 1])
-								this.widgets[this.index].options.max = inputLenth
-
-								this.setDirtyCanvas(true);
+								this.properties["values"].splice(currentSelectedAreaIndex + 1, 0, [0, 0, 0, 0, 1.0]);
+                                this.updateIndexWidgetMax();
+								this.setDirtyCanvas(true, true);
 							},
 						},
 						{
-							content: `swap with input above ${this.widgets[this.index].value} /\\`,
+							content: `swap with input above ${areaIndexValue} /\\`,
 							callback: () => {
-								const index = this.widgets[this.index].value
+								const index = this.widgets[this.comfyWidgetIndexForAreaSelector].value;
 								if (index !== 0) {
-									swapInputs(this, index, index-1)
-
-									renameNodeInputs(this, "conditioning")
-
+									swapInputs(this, index, index-1);
+									renameNodeInputs(this, "conditioning");
 									this.properties["values"].splice(index-1,0,this.properties["values"].splice(index,1)[0]);
-									this.widgets[this.index].value = index-1
-
-									this.setDirtyCanvas(true);
+									this.widgets[this.comfyWidgetIndexForAreaSelector].value = index-1;
+                                    this.updateIndexWidgetMax(); // Max doesn't change, but value might need refresh if it was at max
+									this.setDirtyCanvas(true, true);
 								}
 							},
 						},
 						{
-							content: `swap with input below ${this.widgets[this.index].value} \\/`,
+							content: `swap with input below ${areaIndexValue} \\/`,
 							callback: () => {
-								const index = this.widgets[this.index].value
+								const index = this.widgets[this.comfyWidgetIndexForAreaSelector].value;
 								if (index !== this.inputs.length-1) {
-									swapInputs(this, index, index+1)
-
-									renameNodeInputs(this, "conditioning")
-									
+									swapInputs(this, index, index+1);
+									renameNodeInputs(this, "conditioning");
 									this.properties["values"].splice(index+1,0,this.properties["values"].splice(index,1)[0]);
-									this.widgets[this.index].value = index+1
-
-									this.setDirtyCanvas(true);
+									this.widgets[this.comfyWidgetIndexForAreaSelector].value = index+1;
+                                    this.updateIndexWidgetMax();
+									this.setDirtyCanvas(true, true);
 								}
 							},
 						},
 						{
-							content: `remove currently selected input ${this.widgets[this.index].value}`,
+							content: `remove currently selected input ${areaIndexValue}`,
 							callback: () => {
-								const index = this.widgets[this.index].value
-								removeNodeInputs(this, [index])
-								renameNodeInputs(this, "conditioning")
+								const indexToRemove = this.widgets[this.comfyWidgetIndexForAreaSelector].value;
+                                // Prevent removing if only two inputs are left (as per original removeNodeInputs logic)
+                                if (this.inputs.length <= 2) { 
+                                    console.log("[MultiAreaConditioning] Cannot remove input, minimum of 2 required."); 
+                                    return; 
+                                }
+								removeNodeInputs(this, [indexToRemove]); 
+								renameNodeInputs(this, "conditioning");
+                                this.updateIndexWidgetMax(); 
+                                // Callback for index widget might need to be manually triggered if value changed due to removal
+                                const currentAreaSelectorWidget = this.widgets[this.comfyWidgetIndexForAreaSelector];
+                                if (currentAreaSelectorWidget && currentAreaSelectorWidget.callback) {
+                                    currentAreaSelectorWidget.callback(currentAreaSelectorWidget.value, currentAreaSelectorWidget, this);
+                                }
+								this.setDirtyCanvas(true, true);
 							},
 						},
 						{
 							content: "remove all unconnected inputs",
 							callback: () => {
-								let indexesToRemove = []
-
+								let indexesToRemove = [];
 								for (let i = 0; i < this.inputs.length; i++) {
 									if (!this.inputs[i].link) {
-										indexesToRemove.push(i)
+                                        // Check if we can remove this input (don't go below 2 inputs)
+                                        if (this.inputs.length - indexesToRemove.length > 2) {
+										    indexesToRemove.push(i);
+                                        } else {
+                                            console.log("[MultiAreaConditioning] Skipping removal of unconnected input to maintain minimum of 2.");
+                                        }
 									}
 								}
 
 								if (indexesToRemove.length) {
-									removeNodeInputs(this, indexesToRemove, "conditioning")
+									removeNodeInputs(this, indexesToRemove);
+									renameNodeInputs(this, "conditioning");
+                                    this.updateIndexWidgetMax();
+                                    const currentAreaSelectorWidget = this.widgets[this.comfyWidgetIndexForAreaSelector];
+                                    if (currentAreaSelectorWidget && currentAreaSelectorWidget.callback) {
+                                        currentAreaSelectorWidget.callback(currentAreaSelectorWidget.value, currentAreaSelectorWidget, this);
+                                    }
+									this.setDirtyCanvas(true, true);
 								}
-								renameNodeInputs(this, "conditioning")
 							},
 						},
 					);
 				}
 
 				this.onRemoved = function () {
-					// When removing this node we need to remove the input from the DOM
 					for (let y in this.widgets) {
 						if (this.widgets[y].canvas) {
 							this.widgets[y].canvas.remove();
@@ -366,10 +402,12 @@ app.registerExtension({
 				};
 			
 				this.onSelected = function () {
-					this.selected = true
+					this.selected = true;
+                    this.setDirtyCanvas(true,true);
 				}
 				this.onDeselected = function () {
-					this.selected = false
+					this.selected = false;
+                    this.setDirtyCanvas(true,true);
 				}
 
 				return r;
@@ -378,7 +416,28 @@ app.registerExtension({
 	},
 	loadedGraphNode(node, _) {
 		if (node.type === "MultiAreaConditioning") {
-			node.widgets[node.index].options["max"] = node.properties["values"].length-1
+            // Manually re-create the helper function if it doesn't exist (e.g. loading old graph)
+            if (typeof node.updateIndexWidgetMax !== 'function') {
+                node.comfyWidgetIndexForAreaSelector = 3; // Default assumption
+                node.updateIndexWidgetMax = function() {
+                    const areaSelectorWidget = this.widgets[this.comfyWidgetIndexForAreaSelector];
+                    if (areaSelectorWidget) {
+                        const numInputs = this.inputs ? this.inputs.length : 0;
+                        const newMax = numInputs > 0 ? numInputs - 1 : 0;
+                        areaSelectorWidget.options.max = newMax;
+                        if (areaSelectorWidget.value > newMax) {
+                            areaSelectorWidget.value = newMax;
+                        }
+                        if (this.onWidgetChanged) { 
+                            this.onWidgetChanged(areaSelectorWidget.name, areaSelectorWidget.value, areaSelectorWidget.options);
+                        }
+                        this.setDirtyCanvas(true, true);
+                    } else {
+                        console.warn("[MultiAreaConditioning] updateIndexWidgetMax (fallback): Area selector widget not found at index", this.comfyWidgetIndexForAreaSelector);
+                    }
+                };
+            }
+            node.updateIndexWidgetMax();
 		}
 	},
 	
