@@ -26,53 +26,110 @@ class MultiAreaConditioning:
     CATEGORY = "Davemane42"
 
     def doStuff(self, extra_pnginfo, unique_id, **kwargs):
-
         c = []
         values = []
         resolutionX = 512
         resolutionY = 512
 
-        for node in extra_pnginfo["workflow"]["nodes"]:
-            if node["id"] == int(unique_id):
-                values = node["properties"]["values"]
-                resolutionX = node["properties"]["width"]
-                resolutionY = node["properties"]["height"]
-                break
-        k = 0
-        for arg in kwargs:
-            if k > len(values): break;
-            if not torch.is_tensor(kwargs[arg][0][0]): continue;
-            
-            x, y = values[k][0], values[k][1]
-            w, h = values[k][2], values[k][3]
+        # Robustly extract properties from extra_pnginfo
+        node_properties = None
+        if extra_pnginfo and "workflow" in extra_pnginfo and "nodes" in extra_pnginfo["workflow"]:
+            for node_info in extra_pnginfo["workflow"]["nodes"]:
+                # Ensure IDs are compared consistently (e.g., as strings)
+                if str(node_info.get("id", "")) == str(unique_id):
+                    node_properties = node_info.get("properties", {})
+                    break
+        
+        if node_properties is not None:
+            values = node_properties.get("values", [])
+            resolutionX = node_properties.get("width", 512)
+            resolutionY = node_properties.get("height", 512)
+        else:
+            print(f"[MultiAreaConditioning] Warning: Could not find properties for node unique_id {unique_id}. Using default values.")
+            # values remains [], resolutionX/Y are defaults
 
-            # If fullscreen
-            if (x == 0 and y == 0 and w == resolutionX and h == resolutionY):
-                for t in kwargs[arg]:
-                    c.append(t)
-                k += 1
+        for i in range(len(kwargs)): # Iterate up to the number of conditioning inputs received
+            arg_name = f"conditioning{i}"
+            
+            if arg_name not in kwargs:
+                # This case should ideally not happen if kwargs are sequentially named
+                # and JS ensures values/inputs are in sync.
+                # If it does, it means there's a gap in conditioning inputs.
+                # We might have a values[i] but no kwargs[arg_name].
+                # For safety, we check if 'i' is within bounds of 'values'.
+                if i < len(values):
+                    print(f"[MultiAreaConditioning] Warning: Missing {arg_name} in inputs, but found params in values[{i}]. Skipping this area.")
+                continue
+
+            # Check if we have parameters for this conditioning input index
+            if i >= len(values):
+                # More conditioning inputs in kwargs than parameter sets in 'values'
+                # This could happen if JS failed to add a value set when an input was added.
+                print(f"[MultiAreaConditioning] Warning: No parameters in 'values' for {arg_name} (index {i}). Skipping this area.")
+                continue
+
+            current_conditioning_data = kwargs[arg_name]
+
+            # Check if the conditioning data itself is valid (e.g., a tensor)
+            # Each conditioning is a list of [tensor, dict_with_pooled_output]
+            if not current_conditioning_data or not isinstance(current_conditioning_data, list) or not current_conditioning_data[0] or not torch.is_tensor(current_conditioning_data[0][0]):
+                print(f"[MultiAreaConditioning] Info: {arg_name} (index {i}) is not a valid tensor or is empty. Skipping.")
                 continue
             
-            if x+w > resolutionX:
-                w = max(0, resolutionX-x)
-            
-            if y+h > resolutionY:
-                h = max(0, resolutionY-y)
+            val_set = values[i]
+            # Ensure val_set has the expected number of elements (x, y, w, h, strength)
+            if not isinstance(val_set, list) or len(val_set) < 5:
+                print(f"[MultiAreaConditioning] Warning: Parameters for {arg_name} (values[{i}]) are malformed. Expected [x,y,w,h,strength]. Got: {val_set}. Skipping.")
+                continue
 
-            if w == 0 or h == 0: continue;
+            x, y = val_set[0], val_set[1]
+            w, h = val_set[2], val_set[3]
+            strength = val_set[4] # strength is at index 4
 
-            for t in kwargs[arg]:
-                n = [t[0], t[1].copy()]
-                n[1]['area'] = (h // 8, w // 8, y // 8, x // 8)
-                n[1]['strength'] = values[k][4]
-                n[1]['min_sigma'] = 0.0
-                n[1]['max_sigma'] = 99.0
-                
-                c.append(n)
+            # If fullscreen (area covers the entire resolution)
+            if (x == 0 and y == 0 and w == resolutionX and h == resolutionY):
+                for t in current_conditioning_data:
+                    # Ensure 't' is a list/tuple of [tensor, dict]
+                    if isinstance(t, (list, tuple)) and len(t) == 2:
+                        # Create a new copy of the conditioning item to avoid modifying the original
+                        # if it's shared or comes from a cache.
+                        c_item = [t[0], t[1].copy()]
+                        # Ensure 'area' is removed for fullscreen, or set appropriately if that's the convention
+                        # ComfyUI typically omits 'area' for fullscreen conditionings.
+                        if 'area' in c_item[1]:
+                            del c_item[1]['area'] 
+                        # Overwrite strength if it exists, or add it.
+                        c_item[1]['strength'] = strength 
+                        c.append(c_item)
+                    else:
+                        print(f"[MultiAreaConditioning] Warning: Malformed conditioning item in {arg_name} for fullscreen: {t}")
+
+                continue # Continue to the next conditioning input in kwargs
             
-            k += 1
+            # Adjust width/height if they exceed boundaries
+            if x + w > resolutionX:
+                w = max(0, resolutionX - x)
+            if y + h > resolutionY:
+                h = max(0, resolutionY - y)
+
+            if w == 0 or h == 0: # Skip if area is zero-sized after adjustment
+                print(f"[MultiAreaConditioning] Info: Area for {arg_name} (values[{i}]) became zero-sized after boundary adjustment. Skipping.")
+                continue
+
+            for t in current_conditioning_data:
+                if isinstance(t, (list, tuple)) and len(t) == 2:
+                    n = [t[0], t[1].copy()] # Work on a copy of the conditioning's dictionary part
+                    # Area is (height, width, y, x) all in multiples of 8 (latent space)
+                    n[1]['area'] = (h // 8, w // 8, y // 8, x // 8)
+                    n[1]['strength'] = strength
+                    # These min/max_sigma might be specific to certain samplers or use cases.
+                    # If they are always fixed, this is fine.
+                    n[1]['min_sigma'] = 0.0 
+                    n[1]['max_sigma'] = 99.0
+                    c.append(n)
+                else:
+                    print(f"[MultiAreaConditioning] Warning: Malformed conditioning item in {arg_name} for area processing: {t}")
             
-        
         return (c, resolutionX, resolutionY)
 
 class ConditioningUpscale():

@@ -66,6 +66,7 @@ NODE_CLASS_MAPPINGS = {
     "MultiAreaConditioning": MultiAreaConditioning,
     "ConditioningUpscale": ConditioningUpscale,
     "ConditioningStretch": ConditioningStretch,
+    "ConditioningDebug": ConditioningDebug,
     #"ABGRemover": ABGRemover,
 }
 
