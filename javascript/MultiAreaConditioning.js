@@ -2,67 +2,6 @@ console.log("[MultiAreaConditioning DEBUG] MultiAreaConditioning.js loaded");
 import { app } from "/scripts/app.js";
 import {CUSTOM_INT, recursiveLinkUpstream, transformFunc, swapInputs, renameNodeInputs, removeNodeInputs, getDrawColor, computeCanvasSize} from "./utils.js"
 
-function createAreaSelectorWidget(node) {
-	return {
-		type: "custom",
-		name: "AreaSelectorCanvas",
-		draw: function(ctx, node, width, y) {
-			// Draw the area selection visualization directly in the node
-			const margin = 10;
-			const border = 2;
-			const widgetHeight = 120; // Fixed height for the canvas area
-			const values = node.properties["values"] || [];
-			const index = node.widgets && node.widgets[node.comfyWidgetIndexForAreaSelector] ? Math.round(node.widgets[node.comfyWidgetIndexForAreaSelector].value) : 0;
-			const widthPx = Math.round(node.properties["width"] || 512);
-			const heightPx = Math.round(node.properties["height"] || 512);
-			const scale = Math.min((width-margin*2)/widthPx, (widgetHeight-margin*2)/heightPx);
-			let backgroudWidth = widthPx * scale;
-			let backgroundHeight = heightPx * scale;
-			let xOffset = margin;
-			if (backgroudWidth < width) xOffset += (width-backgroudWidth)/2 - margin;
-			let yOffset = y + margin;
-			if (backgroundHeight < widgetHeight) yOffset += (widgetHeight-backgroundHeight)/2 - margin;
-			// Draw background
-			ctx.save();
-			ctx.fillStyle = "#000000";
-			ctx.fillRect(xOffset-border, yOffset-border, backgroudWidth+border*2, backgroundHeight+border*2);
-			ctx.fillStyle = globalThis.LiteGraph.NODE_DEFAULT_BGCOLOR;
-			ctx.fillRect(xOffset, yOffset, backgroudWidth, backgroundHeight);
-			// Draw all zones except selected
-			function getDrawArea(v) {
-				let x = v[0]*backgroudWidth/widthPx;
-				let y = v[1]*backgroundHeight/heightPx;
-				let w = v[2]*backgroudWidth/widthPx;
-				let h = v[3]*backgroundHeight/heightPx;
-				if (x > backgroudWidth) x = backgroudWidth;
-				if (y > backgroundHeight) y = backgroundHeight;
-				if (x+w > backgroudWidth) w = Math.max(0, backgroudWidth-x);
-				if (y+h > backgroundHeight) h = Math.max(0, backgroundHeight-y);
-				return [x, y, w, h];
-			}
-			for (const [k, v] of values.entries()) {
-				if (k == index) continue;
-				const [x, y, w, h] = getDrawArea(v);
-				ctx.fillStyle = getDrawColor(k/values.length, "80");
-				ctx.fillRect(xOffset+x, yOffset+y, w, h);
-			}
-			// Draw selected zone
-			let [x, y, w, h] = values[index] ? getDrawArea(values[index]) : [0,0,0,0];
-			w = Math.max(32*scale, w);
-			h = Math.max(32*scale, h);
-			ctx.fillStyle = "#ffffff";
-			ctx.fillRect(xOffset+x, yOffset+y, w, h);
-			const selectedColor = getDrawColor(index/values.length, "FF");
-			ctx.fillStyle = selectedColor;
-			ctx.fillRect(xOffset+x+border, yOffset+y+border, w-border*2, h-border*2);
-			ctx.restore();
-		},
-		computeSize: function(width) {
-			return [width, 120]; // width, height
-		}
-	};
-}
-
 function addMultiAreaConditioningCanvas(node, app) {
 	console.log("[MultiAreaConditioning DEBUG] addMultiAreaConditioningCanvas called for node:", node.id);
 
@@ -101,35 +40,29 @@ function addMultiAreaConditioningCanvas(node, app) {
 			const scale = Math.min((widgetWidth-margin*2)/width, (widgetHeight-margin*2)/height)
 			console.log("[MultiAreaConditioning DEBUG] Calculated scale:", scale);
 
-            // Verbose check for the area selector widget and its value
-            const widgetIndex = node.comfyWidgetIndexForAreaSelector;
-            console.log(`[MultiAreaConditioning DEBUG] Draw: Accessing widget at index: ${widgetIndex}. Total widgets: ${node.widgets ? node.widgets.length : 'N/A'}`);
+            let indexToUse = 0; // Default to 0 as a safe fallback
+            const widgetIdx = node.comfyWidgetIndexForAreaSelector; // Should be 3
 
-            const areaSelectorWidget = node.widgets && node.widgets[widgetIndex];
-
-            if (!areaSelectorWidget) {
-                console.warn(`[MultiAreaConditioning DEBUG] Draw function: Area selector widget at index ${widgetIndex} is NOT FOUND. Node ID:`, node.id, "Available widgets:", JSON.stringify(node.widgets ? node.widgets.map(w => ({name: w.name, type: w.type})) : []));
-                if (this.canvas) this.canvas.hidden = true;
-                return; // Exit draw to prevent error
+            if (node.widgets && widgetIdx >= 0 && widgetIdx < node.widgets.length) {
+                const areaSelectorWidget = node.widgets[widgetIdx];
+                if (areaSelectorWidget && areaSelectorWidget.name === "index") { // Check name for safety
+                    if (areaSelectorWidget.value !== null && typeof areaSelectorWidget.value !== 'undefined') {
+                        let numVal = Number(areaSelectorWidget.value); // Use Number() for conversion
+                        if (!isNaN(numVal)) {
+                            indexToUse = Math.round(numVal);
+                        } else {
+                            console.warn(`[MultiAreaConditioning DEBUG] Draw: areaSelectorWidget.value ('${areaSelectorWidget.value}') is NaN after Number(). Using fallback index 0. Node ID: ${node.id}`);
+                        }
+                    } else {
+                        console.warn(`[MultiAreaConditioning DEBUG] Draw: areaSelectorWidget.value is null or undefined. Using fallback index 0. Node ID: ${node.id}`);
+                    }
+                } else {
+                    console.error(`[MultiAreaConditioning DEBUG] Draw: Widget at index ${widgetIdx} is not the 'index' widget or is missing. Widget:`, areaSelectorWidget, `Node ID: ${node.id}. Using fallback index 0.`);
+                }
+            } else {
+                console.error(`[MultiAreaConditioning DEBUG] Draw: Widgets array not populated correctly or widgetIndex ${widgetIdx} is out of bounds. Node ID: ${node.id}. Using fallback index 0.`);
             }
-            
-            console.log(`[MultiAreaConditioning DEBUG] Draw: Found widget: ${areaSelectorWidget.name}, type: ${areaSelectorWidget.type}, value: ${areaSelectorWidget.value}, typeof value: ${typeof areaSelectorWidget.value}`);
-
-            if (typeof areaSelectorWidget.value === 'undefined' || areaSelectorWidget.value === null) { // Check for null explicitly too
-                 console.warn(`[MultiAreaConditioning DEBUG] Draw function: Area selector widget's value is undefined or null. Widget name: ${areaSelectorWidget.name}. Node ID:`, node.id);
-                if (this.canvas) this.canvas.hidden = true;
-                return; 
-            }
-
-            // Attempt to get the value and ensure it's a number before Math.round
-            let numericValue = parseFloat(areaSelectorWidget.value);
-            if (isNaN(numericValue)) {
-                console.error(`[MultiAreaConditioning DEBUG] Draw function: Area selector widget's value is not a number: ${areaSelectorWidget.value}. Widget name: ${areaSelectorWidget.name}. Node ID:`, node.id);
-                if (this.canvas) this.canvas.hidden = true;
-                return;
-            }
-            const index = Math.round(numericValue);
-            console.log(`[MultiAreaConditioning DEBUG] Draw: Successfully got index: ${index}`);
+            console.log(`[MultiAreaConditioning DEBUG] Draw: Final indexToUse for drawing: ${indexToUse}`);
 
 			Object.assign(this.canvas.style, {
 				left: `${t.e}px`,
@@ -189,7 +122,7 @@ function addMultiAreaConditioningCanvas(node, app) {
 			// Draw all the conditioning zones
 			for (const [k, v] of values.entries()) {
 
-				if (k == index) {continue}
+				if (k == indexToUse) {continue}
 
 				const [x, y, w, h] = getDrawArea(v)
 
@@ -216,8 +149,8 @@ function addMultiAreaConditioningCanvas(node, app) {
 			ctx.closePath();
 
 			// Draw currently selected zone
-			console.log(index)
-			let [x, y, w, h] = getDrawArea(values[index])
+			console.log(indexToUse)
+			let [x, y, w, h] = getDrawArea(values[indexToUse])
 
 			w = Math.max(32*scale, w)
 			h = Math.max(32*scale, h)
@@ -226,14 +159,14 @@ function addMultiAreaConditioningCanvas(node, app) {
 			ctx.fillStyle = "#ffffff"
 			ctx.fillRect(widgetX+x, widgetY+y, w, h)
 
-			const selectedColor = getDrawColor(index/values.length, "FF")
+			const selectedColor = getDrawColor(indexToUse/values.length, "FF")
 			ctx.fillStyle = selectedColor
 			ctx.fillRect(widgetX+x+border, widgetY+y+border, w-border*2, h-border*2)
 
 			// Display
 			ctx.beginPath();
 
-			ctx.arc(LiteGraph.NODE_SLOT_HEIGHT*0.5, LiteGraph.NODE_SLOT_HEIGHT*(index + 0.5)+4, 4, 0, Math.PI * 2);
+			ctx.arc(LiteGraph.NODE_SLOT_HEIGHT*0.5, LiteGraph.NODE_SLOT_HEIGHT*(indexToUse + 0.5)+4, 4, 0, Math.PI * 2);
 			ctx.fill();
 
 			ctx.lineWidth = 1;
@@ -241,7 +174,7 @@ function addMultiAreaConditioningCanvas(node, app) {
 			ctx.stroke();
 
 			if (node.selected) {
-				const connectedNodes = recursiveLinkUpstream(node, node.inputs[index].type, 0, index)
+				const connectedNodes = recursiveLinkUpstream(node, node.inputs[indexToUse].type, 0, indexToUse)
 				
 				if (connectedNodes.length !== 0) {
 					for (let [node_ID, depth] of connectedNodes) {
@@ -337,7 +270,7 @@ app.registerExtension({
 				CUSTOM_INT(this, "resolutionX", 512, function (v, _, node) {const s = this.options.step / 10; this.value = Math.round(v / s) * s; node.properties["width"] = this.value; node.setDirtyCanvas(true,true); });
 				CUSTOM_INT(this, "resolutionY", 512, function (v, _, node) {const s = this.options.step / 10; this.value = Math.round(v / s) * s; node.properties["height"] = this.value; node.setDirtyCanvas(true,true); });
                 
-				this.addCustomWidget(createAreaSelectorWidget(this));
+				addMultiAreaConditioningCanvas(this, app);
 
 				const initialMaxIndex = this.inputs ? (this.inputs.length > 0 ? this.inputs.length - 1 : 0) : 0;
 				CUSTOM_INT(
@@ -345,6 +278,7 @@ app.registerExtension({
 					"index", // This is the area selector widget
 					0,
 					function (v, widget, node) { // v is the new index value
+                        console.log(`[MultiAreaConditioning DEBUG] Index widget CALLBACK triggered. New value v: ${v}, widget.value: ${widget.value}, widget.options.max: ${widget.options.max}`);
 						let values = node.properties["values"];
                         if (values && v >= 0 && v < values.length && values[v]) {
                             node.widgets[4].value = values[v][0]; // x
