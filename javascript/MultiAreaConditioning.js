@@ -40,7 +40,14 @@ function addMultiAreaConditioningCanvas(node, app) {
 			const scale = Math.min((widgetWidth-margin*2)/width, (widgetHeight-margin*2)/height)
 			console.log("[MultiAreaConditioning DEBUG] Calculated scale:", scale);
 
-			const index = Math.round(node.widgets[node.index].value)
+			// Safety check for the area selector widget
+			if (!node.widgets || !node.widgets[node.comfyWidgetIndexForAreaSelector] || typeof node.widgets[node.comfyWidgetIndexForAreaSelector].value === 'undefined') {
+				console.warn("[MultiAreaConditioning DEBUG] Draw function: Area selector widget or its value is not available yet. Skipping draw. Node ID:", node.id);
+				// Optionally, you might want to hide the canvas or draw a placeholder if this happens frequently
+				if (this.canvas) this.canvas.hidden = true;
+				return; // Exit draw to prevent error
+			}
+			const index = Math.round(node.widgets[node.comfyWidgetIndexForAreaSelector].value);
 
 			Object.assign(this.canvas.style, {
 				left: `${t.e}px`,
