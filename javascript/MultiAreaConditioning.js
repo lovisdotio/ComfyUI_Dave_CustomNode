@@ -2,48 +2,82 @@ console.log("[MultiAreaConditioning DEBUG] MultiAreaConditioning.js loaded");
 import { app } from "/scripts/app.js";
 import {CUSTOM_INT, recursiveLinkUpstream, transformFunc, swapInputs, renameNodeInputs, removeNodeInputs, getDrawColor} from "./utils.js"
 
-function addMultiAreaConditioningCanvas(node, app) {
-	console.log("[MAC DEBUG] addMultiAreaConditioningCanvas for node:", node.id);
+function addMultiAreaConditioningCanvas(node_ref, app) {
+	console.log("[MAC DEBUG] addMultiAreaConditioningCanvas for node:", node_ref.id);
 
 	const widget = {
 		type: "customCanvas",
 		name: "MultiAreaConditioning-Canvas",
-		computeSize: function(node_width) { 
-			let width = (node_width || node.size[0] || LiteGraph.NODE_WIDTH) - 8; // Subtract ~4px padding on each side
-			if (width < 10) width = 10; 
-			const height = 300; 
-			this.size = [width, height]; // Crucial: widget must store its own size for LiteGraph to use
-			// console.log(`[MAC DEBUG] customCanvas.computeSize (node_width: ${node_width}) SETTING this.size to: [${this.size[0]}, ${this.size[1]}]`);
-			return this.size; 
+		computeSize: function(available_width_for_widget) {
+			const node_actual_width = node_ref.size[0]; // node_ref is the LGraphNode
+			const default_node_width = LiteGraph.NODE_WIDTH;
+			
+			let canvas_width = (node_actual_width > 20 ? node_actual_width : default_node_width) - 16; // Use node's current width if reasonable, else default, minus padding.
+			if (canvas_width < 100) canvas_width = 100; // Ensure a minimum sensible width for the canvas.
+			
+			const canvas_height = 300; // Our desired fixed height.
+			
+			this.size = [canvas_width, canvas_height]; // CRUCIAL: Store computed size on the widget instance.
+			
+			console.log(`[MAC_WIDGET_COMPUTE_SIZE] NodeID: ${node_ref.id}, Widget: ${this.name}, AvailableParamWidth: ${available_width_for_widget}, NodeActualWidth: ${node_actual_width}, CalculatedCanvasWidth: ${this.size[0]}, SetCanvasHeight: ${this.size[1]}`);
+			return this.size; // Return [width, height]
 		},
-		draw: function (ctx, node, widgetWidth, widgetY, widgetHeight) { 
-			if (widgetWidth <= 0 || widgetHeight <= 0) { 
-				// console.warn(`[MAC Draw DEBUG] Draw called with zero/neg W/H. WW:${widgetWidth}, WH:${widgetHeight}`);
-				return; 
+		draw: function (ctx, containing_node, widget_width_alloc, widget_y_pos, widget_height_alloc) { 
+			console.log(`[MAC_WIDGET_DRAW_ENTRY] NodeID: ${containing_node.id}, Widget: ${this.name}, All_WW: ${widget_width_alloc}, All_WH: ${widget_height_alloc}, All_WY: ${widget_y_pos}, WidgetOwnSize: ${this.size ? this.size[0]+'x'+this.size[1] : 'N/A'}, NodeTotalSize: ${containing_node.size[0]}x${containing_node.size[1]}`);
+
+			if (widget_width_alloc <= 0 || widget_height_alloc <= 0) {
+				console.warn(`[MAC_WIDGET_DRAW_SKIP] Skipped due to zero/negative allocated width/height. W:${widget_width_alloc}, H:${widget_height_alloc}`);
+				return;
 			}
-			// console.log(`[MAC Draw DEBUG] Entry: WW: ${widgetWidth}, WH: ${widgetHeight}, NodeID: ${node.id}`);
+
+			// Simple diagnostic draw: fill the allocated space with a bright color.
+			ctx.save();
+			ctx.fillStyle = "rgba(0, 255, 0, 0.5)"; // Bright green, semi-transparent
+			ctx.fillRect(0, 0, widget_width_alloc, widget_height_alloc); // Fill the entire allocated area for this widget
+			
+			// Draw a border around the allocated space
+			ctx.strokeStyle = "red";
+			ctx.lineWidth = 2;
+			ctx.strokeRect(0, 0, widget_width_alloc, widget_height_alloc);
+
+			// Draw text with the dimensions
+			ctx.fillStyle = "black";
+			ctx.font = "12px Arial";
+			ctx.textAlign = "left";
+			ctx.textBaseline = "top";
+			ctx.fillText(`Alloc: ${widget_width_alloc.toFixed(0)}x${widget_height_alloc.toFixed(0)} @ Y:${widget_y_pos.toFixed(0)}`, 5, 5);
+			if (this.size) {
+				ctx.fillText(`OwnSize: ${this.size[0].toFixed(0)}x${this.size[1].toFixed(0)}`, 5, 20);
+			}
+			ctx.restore();
+
+			// If widget_height_alloc is significantly less than 300, something is wrong upstream.
+			if (widget_height_alloc < 290) { // Allow some minor floating point diff
+				 console.error(`[MAC_WIDGET_DRAW_ERROR] Allocated height ${widget_height_alloc} is much less than expected 300!`);
+			}
+			/*
 			const margin = 5; const border = 2;
-			const values = node.properties["values"];
-			const previewWidth = Math.round(node.properties["width"]); 
-			const previewHeight = Math.round(node.properties["height"]); 
+			const values = containing_node.properties["values"];
+			const previewWidth = Math.round(containing_node.properties["width"]); 
+			const previewHeight = Math.round(containing_node.properties["height"]); 
 
 			let indexToUse = 0; 
-			const widgetIdx = node.comfyWidgetIndexForAreaSelector;
-			const areaSelectorWidget = node.widgets && node.widgets[widgetIdx];
+			const widgetIdx = containing_node.comfyWidgetIndexForAreaSelector;
+			const areaSelectorWidget = containing_node.widgets && containing_node.widgets[widgetIdx];
 			if (areaSelectorWidget && areaSelectorWidget.name === "index" && areaSelectorWidget.value !== null && typeof areaSelectorWidget.value !== 'undefined') {
 				let numVal = Number(areaSelectorWidget.value);
 				if (!isNaN(numVal)) { indexToUse = Math.round(numVal); }
 			} 
 			let scale = 0.1;
-			if (previewWidth > 0 && previewHeight > 0 && (widgetWidth - margin * 2) > 0 && (widgetHeight - margin * 2) > 0 ) {
-				scale = Math.min((widgetWidth - margin * 2) / previewWidth, (widgetHeight - margin * 2) / previewHeight);
+			if (previewWidth > 0 && previewHeight > 0 && (widget_width_alloc - margin * 2) > 0 && (widget_height_alloc - margin * 2) > 0 ) {
+				scale = Math.min((widget_width_alloc - margin * 2) / previewWidth, (widget_height_alloc - margin * 2) / previewHeight);
 			} 
 			if (scale <= 0) { scale = 0.01; }
 			let backgroundRenderWidth = previewWidth * scale;
 			let backgroundRenderHeight = previewHeight * scale;
-			let xOffset = margin; if (backgroundRenderWidth < widgetWidth) { xOffset = (widgetWidth - backgroundRenderWidth) / 2; }
-			let yOffset = margin; if (backgroundRenderHeight < widgetHeight) { yOffset = (widgetHeight - backgroundRenderHeight) / 2; }
-			ctx.save(); ctx.beginPath(); ctx.rect(0, 0, widgetWidth, widgetHeight); ctx.clip();
+			let xOffset = margin; if (backgroundRenderWidth < widget_width_alloc) { xOffset = (widget_width_alloc - backgroundRenderWidth) / 2; }
+			let yOffset = margin; if (backgroundRenderHeight < widget_height_alloc) { yOffset = (widget_height_alloc - backgroundRenderHeight) / 2; }
+			ctx.save(); ctx.beginPath(); ctx.rect(0, 0, widget_width_alloc, widget_height_alloc); ctx.clip();
 			ctx.translate(xOffset, yOffset);
 			ctx.fillStyle = "#000000"; ctx.fillRect(-border, -border, backgroundRenderWidth + border * 2, backgroundRenderHeight + border * 2);
 			ctx.fillStyle = globalThis.LiteGraph.NODE_DEFAULT_BGCOLOR; ctx.fillRect(0, 0, backgroundRenderWidth, backgroundRenderHeight);
@@ -51,12 +85,13 @@ function addMultiAreaConditioningCanvas(node, app) {
 			if (values && values.length > 0) { for (const [k, v] of values.entries()) { if (k == indexToUse || !v || v.length < 4) continue; const [rx,ry,rw,rh]=getDrawArea(v); if (rw>0&&rh>0){ctx.fillStyle=getDrawColor(k/values.length,"80"); ctx.fillRect(rx,ry,rw,rh);}}} ctx.beginPath(); ctx.lineWidth=1;
 			for (let gx=0;gx<=previewWidth;gx+=64){ctx.moveTo(gx*scale,0);ctx.lineTo(gx*scale,backgroundRenderHeight);} for(let gy=0;gy<=previewHeight;gy+=64){ctx.moveTo(0,gy*scale);ctx.lineTo(backgroundRenderWidth,gy*scale);} ctx.strokeStyle="#00000050";ctx.stroke();ctx.closePath();
 			if(values&&indexToUse>=0&&indexToUse<values.length){const selV=values[indexToUse];if(selV&&selV.length>=4){let [rx,ry,rw,rh]=getDrawArea(selV);const mvs=32*scale;rw=Math.max(mvs,rw);rh=Math.max(mvs,rh);if(rw>0&&rh>0){ctx.fillStyle="#FFFFFF";ctx.fillRect(rx,ry,rw,rh);const selC=getDrawColor(indexToUse/values.length,"FF");ctx.fillStyle=selC;ctx.fillRect(rx+border,ry+border,rw-border*2,rh-border*2);}}} ctx.restore();
+			*/
 		},
 	};
 
-	node.addCustomWidget(widget);
+	node_ref.addCustomWidget(widget);
 
-	return { minWidth: 300, minHeight: 550, widget }; // Suggested node min size
+	return { minWidth: 300, minHeight: 550, widget }; // Suggested node min size, (this return is not actively used by onNodeCreated)
 }
 
 app.registerExtension({
@@ -151,6 +186,9 @@ app.registerExtension({
 
 				addMultiAreaConditioningCanvas(this, app); // Custom canvas widget is widget index 8
 				
+				// Explicitly set the node's minimum size to ensure space for all widgets
+				this.min_size = [300, 650];
+
 				// After ALL widgets are added, tell the node to compute its actual size to fit them.
 				this.size = this.computeSize(); 
 				this.setDirtyCanvas(true, true); 
