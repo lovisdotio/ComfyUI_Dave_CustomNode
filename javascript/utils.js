@@ -6,17 +6,17 @@ export function CUSTOM_INT(node, inputName, val, func, config = {}) {
 			"number",
 			inputName,
 			val,
-			func, 
-			Object.assign({}, { min: 0, max: 4096, step: 640, precision: 0 }, config)
+			func,
+			Object.assign({}, { min: 0, max: 4096, step: 1, precision: 0 }, config)
 		),
 	};
 }
 
-export function recursiveLinkUpstream(node, type, depth, index=null) {
+export function recursiveLinkUpstream(node, type, depth, index = null) {
 	depth += 1
 	let connections = []
 	const inputList = (index !== null) ? [index] : [...Array(node.inputs.length).keys()]
-	if (inputList.length === 0) { return }
+	if (inputList.length === 0) { return connections }
 	for (let i of inputList) {
 		const link = node.inputs[i].link
 		if (link) {
@@ -25,14 +25,10 @@ export function recursiveLinkUpstream(node, type, depth, index=null) {
 			const connectedNode = node.graph._nodes_by_id[nodeID]
 
 			if (connectedNode.outputs[slotID].type === type) {
-
 				connections.push([connectedNode.id, depth])
-
 				if (connectedNode.inputs) {
-					const index = (connectedNode.type === "LatentComposite") ? 0 : null
-					connections = connections.concat(recursiveLinkUpstream(connectedNode, type, depth, index))
-				} else {
-					
+					const nextIndex = (connectedNode.type === "LatentComposite") ? 0 : null
+					connections = connections.concat(recursiveLinkUpstream(connectedNode, type, depth, nextIndex))
 				}
 			}
 		}
@@ -41,21 +37,52 @@ export function recursiveLinkUpstream(node, type, depth, index=null) {
 }
 
 export function transformFunc(widget, value, node, propertyIndexToChange) {
-	const s = widget.options.step / 10;
-	widget.value = Math.round(value / s) * s;
-
+	let selectedAreaIndex = 0;
 	const areaSelectorWidgetIdx = node.comfyWidgetIndexForAreaSelector;
-	if (areaSelectorWidgetIdx === undefined || !node.widgets[areaSelectorWidgetIdx]) {
-		console.error("[transformFunc] Error: node.comfyWidgetIndexForAreaSelector is not defined or widget not found. Cannot update area properties.");
-		return;
-	}
-	const selectedAreaIndex = node.widgets[areaSelectorWidgetIdx].value;
+	const areaSelectorWidget = node.widgets && node.widgets[areaSelectorWidgetIdx];
 
-	if (node.properties && node.properties["values"] && selectedAreaIndex < node.properties["values"].length) {
-		node.properties["values"][selectedAreaIndex][propertyIndexToChange] = widget.value;
+	if (areaSelectorWidget && areaSelectorWidget.name === "index" &&
+		areaSelectorWidget.value !== null && typeof areaSelectorWidget.value !== 'undefined') {
+		let numVal = Number(areaSelectorWidget.value);
+		if (!isNaN(numVal)) {
+			selectedAreaIndex = Math.round(numVal);
+		} else {
+			console.warn(`[transformFunc] areaSelectorWidget.value ('${areaSelectorWidget.value}') is NaN. Defaulting selectedAreaIndex to 0.`);
+		}
 	} else {
-		console.error(`[transformFunc] Error: Cannot access values[${selectedAreaIndex}] for property update.`);
-		return;
+		console.warn(`[transformFunc] Area selector widget (name: ${areaSelectorWidget ? areaSelectorWidget.name : 'N/A'}) value issue or widget not found. Defaulting selectedAreaIndex to 0.`);
+	}
+
+	let processedValue = Number(value);
+	if (isNaN(processedValue)) {
+		console.warn(`[transformFunc] Input 'value' ("${value}") for widget ${widget.name} is NaN. Using current widget value or 0.`);
+		processedValue = Number(widget.value) || 0;
+	}
+
+	if (widget.options && typeof widget.options.precision === 'number') {
+		if (widget.options.precision === 0) {
+			widget.value = Math.round(processedValue);
+		} else {
+			widget.value = parseFloat(processedValue.toFixed(widget.options.precision));
+		}
+	} else {
+		if (propertyIndexToChange <= 3) {
+			widget.value = Math.round(processedValue);
+		} else {
+			widget.value = processedValue;
+		}
+	}
+
+	if (node.properties && node.properties["values"] &&
+		selectedAreaIndex >= 0 && selectedAreaIndex < node.properties["values"].length &&
+		node.properties["values"][selectedAreaIndex]) {
+		if (propertyIndexToChange >= 0 && propertyIndexToChange < node.properties["values"][selectedAreaIndex].length) {
+			node.properties["values"][selectedAreaIndex][propertyIndexToChange] = widget.value;
+		} else {
+			console.error(`[transformFunc] propertyIndexToChange (${propertyIndexToChange}) out of bounds for values[${selectedAreaIndex}] (len: ${node.properties["values"][selectedAreaIndex].length}).`);
+		}
+	} else {
+		console.error(`[transformFunc] Cannot access values[${selectedAreaIndex}] (values len: ${node.properties["values"] ? node.properties["values"].length : 'N/A'}).`);
 	}
 
 	if (node.setDirtyCanvas) {
@@ -115,9 +142,10 @@ export function removeNodeInputs(node, indexesToRemove, offset=0) {
 	indexesToRemove.sort((a, b) => b - a);
 
 	for (let i of indexesToRemove) {
-		if (node.inputs.length <= 2) { console.log("too short"); continue } // if only 2 left
 		node.removeInput(i)
-		node.properties.values.splice(i-offset, 1)
+		if (node.properties && node.properties.values) {
+			node.properties.values.splice(i-offset, 1)
+		}
 	}
 
 	const inputLenght = node.properties["values"].length-1

@@ -95,8 +95,7 @@ function addMultiAreaConditioningCanvas(node, app) {
             
 			if (values && values.length > 0) {
 				for (const [k, v] of values.entries()) {
-					if (k == indexToUse) {continue}
-					if (!v || v.length < 4) continue;
+					if (k == indexToUse || !v || v.length < 4) continue;
 
 					const [rectX, rectY, rectW, rectH] = getDrawArea(v);
 					if (rectW > 0 && rectH > 0) {
@@ -174,8 +173,11 @@ app.registerExtension({
 						if (areaSelectorWidget.options.max !== newMax) {
 							areaSelectorWidget.options.max = newMax;
 						}
-						if (areaSelectorWidget.value > newMax) {
+						if (areaSelectorWidget.value > newMax && newMax >= 0) {
 							areaSelectorWidget.value = newMax;
+						}
+						if (areaSelectorWidget.value < 0 && numInputs > 0) {
+							areaSelectorWidget.value = 0;
 						}
 						if (this.onWidgetChanged) { 
 							this.onWidgetChanged(areaSelectorWidget.name, areaSelectorWidget.value, areaSelectorWidget.options);
@@ -186,31 +188,55 @@ app.registerExtension({
 					}
 				};
 
-				CUSTOM_INT(this, "resolutionX", 512, function (v, widget, node) {node.properties["width"] = Math.round(v / (widget.options.step/10)) * (widget.options.step/10); node.setDirtyCanvas(true,true); });
-				CUSTOM_INT(this, "resolutionY", 512, function (v, widget, node) {node.properties["height"] = Math.round(v / (widget.options.step/10)) * (widget.options.step/10); node.setDirtyCanvas(true,true); });
+				CUSTOM_INT(this, "resolutionX", 512, function (v, widget, node) {node.properties["width"] = Math.round(Number(v)); node.setDirtyCanvas(true,true); });
+				CUSTOM_INT(this, "resolutionY", 512, function (v, widget, node) {node.properties["height"] = Math.round(Number(v)); node.setDirtyCanvas(true,true); });
 				
-				const initialMaxIndex = this.inputs ? (this.inputs.length > 0 ? this.inputs.length - 1 : 0) : 0;
-				CUSTOM_INT(
-					this,
-					"index",
-					0,
-					function (v, widget, node) {
-						console.log(`[MultiAreaConditioning DEBUG] Index widget CALLBACK triggered. New value v: ${v}, widget.value: ${widget.value}, widget.options.max: ${widget.options.max}`);
-						let values = node.properties["values"];
-						if (values && v >= 0 && v < values.length && values[v]) {
-							node.widgets[3].value = values[v][0];
-							node.widgets[4].value = values[v][1];
-							node.widgets[5].value = values[v][2];
-							node.widgets[6].value = values[v][3];
-							if (values[v].length <= 4 || values[v][4] === undefined) {values[v][4] = 1.0;}
-							node.widgets[7].value = values[v][4];
+				let initialMaxIndex = this.inputs ? (this.inputs.length > 0 ? this.inputs.length - 1 : 0) : 0;
+				if (initialMaxIndex < 0) initialMaxIndex = 0; // Should not happen with 2 default inputs
+
+				CUSTOM_INT(this, "index", 0, function (rawValue, widget, node) {
+					let attemptedValue = Number(rawValue);
+					let finalSanitizedIndex = 0; // Default to 0
+
+					if (!isNaN(attemptedValue)) {
+						finalSanitizedIndex = Math.round(attemptedValue);
+					} else {
+						// If rawValue is NaN, try to use widget.value if it's a number
+						let widgetNumValue = Number(widget.value);
+						if (!isNaN(widgetNumValue)) {
+							finalSanitizedIndex = Math.round(widgetNumValue);
 						} else {
-							console.warn(`[MultiAreaConditioning] Index widget callback: Attempted to access values[${v}] out of bounds. Values length: ${values ? values.length : 'N/A'}. Current values:`, JSON.stringify(values));
+							 console.warn(`[MAC Index CB] Both rawValue '${rawValue}' and widget.value '${widget.value}' are NaN. Using 0.`);
 						}
-						node.setDirtyCanvas(true, true);
-					},
-					{ step: 1, max: initialMaxIndex } 
-				);
+					}
+
+					const currentMax = (widget.options.max !== null && typeof widget.options.max !== 'undefined') ? widget.options.max : (node.inputs.length -1);
+					
+					// Clamp
+					if (finalSanitizedIndex < 0) finalSanitizedIndex = 0;
+					if (finalSanitizedIndex > currentMax && currentMax >=0) finalSanitizedIndex = currentMax;
+					
+					// Update widget value if it was changed by sanitization/clamping
+					// This ensures subsequent reads (by transformFunc or draw) get the clean integer
+					if (widget.value !== finalSanitizedIndex) {
+						widget.value = finalSanitizedIndex;
+					}
+
+					console.log(`[MAC DEBUG] Index CB. RawV: ${rawValue}, WidgetVal: ${widget.value}(now ${finalSanitizedIndex}), OptMax: ${widget.options.max}, Inputs: ${node.inputs.length}`);
+					
+					let values = node.properties["values"];
+					if (values && finalSanitizedIndex >= 0 && finalSanitizedIndex < values.length && values[finalSanitizedIndex]) {
+						node.widgets[3].value = values[finalSanitizedIndex][0]; // x (widget 3)
+						node.widgets[4].value = values[finalSanitizedIndex][1]; // y (widget 4)
+						node.widgets[5].value = values[finalSanitizedIndex][2]; // width (widget 5)
+						node.widgets[6].value = values[finalSanitizedIndex][3]; // height (widget 6)
+						if (values[finalSanitizedIndex].length <= 4 || values[finalSanitizedIndex][4] === undefined) { values[finalSanitizedIndex][4] = 1.0; }
+						node.widgets[7].value = values[finalSanitizedIndex][4]; // strength (widget 7)
+					} else {
+						console.warn(`[MAC Index CB] values[${finalSanitizedIndex}] out of bounds. Values len: ${values ? values.length : 'N/A'}.`);
+					}
+					node.setDirtyCanvas(true, true);
+				}, { step: 1, max: initialMaxIndex, precision: 0 }); // Ensure index widget is integer
 				
 				CUSTOM_INT(this, "x", 0, function (v, widget, node) {transformFunc(widget, v, node, 0);});
 				CUSTOM_INT(this, "y", 0, function (v, widget, node) {transformFunc(widget, v, node, 1);});
@@ -363,7 +389,8 @@ app.registerExtension({
 						const numInputs = this.inputs ? this.inputs.length : 0;
 						const newMax = numInputs > 0 ? numInputs - 1 : 0;
 						if(areaSelectorWidget.options.max !== newMax) areaSelectorWidget.options.max = newMax;
-						if (areaSelectorWidget.value > newMax) areaSelectorWidget.value = newMax;
+						if (areaSelectorWidget.value > newMax && newMax >=0) areaSelectorWidget.value = newMax;
+						if (areaSelectorWidget.value < 0 && numInputs > 0) areaSelectorWidget.value = 0;
 						if (this.onWidgetChanged) { this.onWidgetChanged(areaSelectorWidget.name, areaSelectorWidget.value, areaSelectorWidget.options);}
 						this.setDirtyCanvas(true, true);
 					} else { console.warn("[MultiAreaConditioning] updateIndexWidgetMax (fallback): Area selector not found"); }
